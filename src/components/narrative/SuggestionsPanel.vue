@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { NSpace, NButton } from 'naive-ui'
+import { NSpace, NButton, useThemeVars } from 'naive-ui'
 import { useNarrativeStore } from '../../stores/narrative'
 
 const narrativeStore = useNarrativeStore()
+const themeVars = useThemeVars()
 
 const emit = defineEmits<{
   (e: 'select', option: string): void
@@ -28,8 +29,8 @@ const handleSelect = (opt: string) => {
 </script>
 
 <template>
-  <div v-if="latestOptions.length > 0" style="padding: 12px 16px; background: var(--n-color); border-top: 1px solid var(--n-border-color);">
-    <div style="font-size: 12px; margin-bottom: 8px; color: var(--n-text-color-3);">💡 建议分支：</div>
+  <div v-if="latestOptions.length > 0" :style="{ padding: '12px 16px', background: themeVars.bodyColor, borderTop: `1px solid ${themeVars.borderColor}` }">
+    <div :style="{ fontSize: '12px', marginBottom: '8px', color: themeVars.textColor3 }">💡 建议分支：</div>
     <n-space>
       <n-button 
         v-for="opt in latestOptions" 

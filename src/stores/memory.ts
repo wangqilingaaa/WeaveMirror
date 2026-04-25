@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import Mock from 'mockjs'
 
 export interface Memory {
   id: string
@@ -95,18 +96,22 @@ export const useMemoryStore = defineStore('memory', {
         }
       ]
 
-      const fakeData: Memory[] = Array.from({ length: 30 }).map((_, i) => ({
-        id: `mem_${characterId}_${i}`,
-        characterId,
-        timestamp: `星历 402 年 ${Math.floor(i / 6) + 1} 月 ${i % 28 + 1} 日`,
-        summary: `发生了个人事件 ${i + 1}`,
-        detail: `这是关于个人事件 ${i + 1} 的详细描述。角色在这一天经历了一些重要的事情，对其后续的发展产生了影响。`,
-        tags: ['日常', i % 5 === 0 ? '重要' : '琐事'],
-        isCore: i % 10 === 0, // 每10个设定为一个核心记忆
-        userNote: ''
-      }))
-      
-      this.memories.push(...sharedMemories, ...fakeData)
+      const mockData = Mock.mock({
+        'memories|20-40': [
+          {
+            'id': '@guid',
+            'characterId': characterId,
+            'timestamp': () => `星历 ${Mock.Random.integer(380, 410)} 年 ${Mock.Random.integer(1, 12)} 月 ${Mock.Random.integer(1, 28)} 日`,
+            'summary': '@ctitle(5, 12)',
+            'detail': '@cparagraph(2, 6)',
+            'tags|1-3': ['@cword(2, 4)'],
+            'isCore|1-10': true, // 10% 概率是核心记忆
+            'userNote': ''
+          }
+        ]
+      }).memories
+
+      this.memories.push(...sharedMemories, ...mockData)
     }
   }
 })

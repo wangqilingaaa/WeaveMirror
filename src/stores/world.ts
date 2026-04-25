@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import Mock from 'mockjs'
 
 export interface World {
   id: string
@@ -18,9 +19,24 @@ export const useWorldStore = defineStore('world', () => {
     return new Promise<void>((resolve) => {
       setTimeout(() => {
         if (worlds.value.length === 0) {
+          // 使用 Mock 生成丰富假数据
+          const mockData = Mock.mock({
+            'worlds|5-8': [
+              {
+                'id': '@guid',
+                'name': '@ctitle(4, 8)世界',
+                'description': '@cparagraph(2, 5)',
+                'tags|2-4': ['@cword(2, 4)'],
+                'currentYear|100-3000': 1
+              }
+            ]
+          })
+          
+          // 保留一些特定的世界，也可以全部替换
           worlds.value = [
-            { id: 'w1', name: '阿卡迪亚 (Arcadia)', description: '一个充满魔法与机械混合的浮空岛世界。', tags: ['魔法', '机械', '浮空岛'], currentYear: 402 },
-            { id: 'w2', name: '赛博新石器 (Cyber-Neolithic)', description: '在废土之上重建的原始部落部落，使用古老仪式操控遗留的纳米科技。', tags: ['废土', '赛博朋克', '部落'], currentYear: 2077 }
+            { id: 'w1', name: '阿卡迪亚 (Arcadia)', description: '一个充满魔法与机械混合的浮空岛世界。在云端之上，巨龙与飞艇共舞，古代魔法塔的遗迹中闪烁着齿轮的光芒。', tags: ['魔法', '机械', '浮空岛', '史诗'], currentYear: 402 },
+            { id: 'w2', name: '赛博新石器 (Cyber-Neolithic)', description: '在废土之上重建的原始部落，使用古老仪式操控遗留的纳米科技。这里的猎人使用等离子长矛狩猎机械巨兽。', tags: ['废土', '赛博朋克', '部落', '科幻'], currentYear: 2077 },
+            ...mockData.worlds
           ]
         }
         // 如果没有选中的世界，默认选中第一个
@@ -36,9 +52,10 @@ export const useWorldStore = defineStore('world', () => {
     return new Promise<void>((resolve) => {
       setTimeout(() => {
         const newWorld: World = {
-          id: 'w' + Date.now(),
+          id: Mock.Random.guid(),
           name,
-          description: '一个刚刚诞生的崭新世界。',
+          description: Mock.Random.cparagraph(1, 3),
+          tags: Mock.mock({ 'array|1-3': ['@cword(2, 4)'] }).array,
           currentYear: 1
         }
         worlds.value.push(newWorld)
@@ -52,11 +69,11 @@ export const useWorldStore = defineStore('world', () => {
     return new Promise<void>((resolve) => {
       setTimeout(() => {
         const newWorld: World = {
-          id: 'w' + Date.now(),
+          id: Mock.Random.guid(),
           name,
           tags,
-          description: `【AI 生成】基于 ${tags.join(', ')} 标签自动扩展的复杂世界观设定，包含详细的地理环境、种族分布与历史背景...`,
-          currentYear: 100
+          description: `【AI 生成】基于 ${tags.join(', ')} 标签自动扩展的复杂世界观设定，包含详细的地理环境、种族分布与历史背景。\n\n${Mock.Random.cparagraph(4, 8)}`,
+          currentYear: Mock.Random.integer(10, 5000)
         }
         worlds.value.push(newWorld)
         if (!currentWorldId.value) currentWorldId.value = newWorld.id

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { NarrativeSocket } from '../services/narrativeWs'
+import Mock from 'mockjs'
 
 export interface Message {
   id: string
@@ -27,6 +28,29 @@ export const useNarrativeStore = defineStore('narrative', () => {
   const connect = (worldId: string) => {
     // 建立新连接前清理旧连接
     disconnect()
+
+    // 初始化一些默认的假消息，展示不同角色的消息效果
+    if (messages.value.length === 0) {
+      messages.value = [
+        {
+          id: 'msg_init_1',
+          role: 'system',
+          content: '【世界初始化完成】当前接入：' + worldId
+        },
+        {
+          id: 'msg_init_2',
+          role: 'narrator',
+          content: Mock.Random.cparagraph(1, 2)
+        },
+        {
+          id: 'msg_init_3',
+          role: 'assistant',
+          content: Mock.mock('@cparagraph(2, 4)'),
+          narratorText: 'NPC 的表情微微发生变化，似乎在思考着什么。',
+          options: ['询问更多细节', '保持沉默', '试图攻击']
+        }
+      ]
+    }
 
     socket = new NarrativeSocket(worldId)
 
@@ -102,27 +126,50 @@ export const useNarrativeStore = defineStore('narrative', () => {
       content
     })
 
-    if (socket) {
-      socket.send('turn_submit', { content })
-    } else {
-      console.warn('[NarrativeStore] WebSocket is not connected. Message not sent.')
-      // 模拟后端返回（便于前端验收）
-      setTimeout(() => {
-        handleIncomingMessage('ripple_brief', {
-          title: '涟漪效应发生',
-          content: `由于你刚才说了 "${content.substring(0, 5)}..."，某个隐藏角色的态度转为冷漠，世界线悄然发生偏转。`,
-          type: 'warning'
-        })
-        
-        // 模拟触发后台传闻事件
-        setTimeout(() => {
-          handleIncomingMessage('background_event', {
-            content: `传闻：就在刚才，有人目击到亚瑟和梅林在密林深处进行了一场秘密会面...`
+    // 模拟后端处理
+    isTyping.value = true
+    
+    setTimeout(() => {
+      // 模拟流式返回
+      const fakeResponse = Mock.Random.cparagraph(3, 8)
+      const fakeNarrator = Mock.Random.boolean() ? Mock.Random.csentence(5, 15) : undefined
+      const fakeOptions = Mock.mock({ 'array|2-4': ['@cword(4, 8)'] }).array
+      
+      let currentLength = 0
+      const streamInterval = setInterval(() => {
+        if (currentLength < fakeResponse.length) {
+          const chunk = fakeResponse.slice(currentLength, currentLength + 5)
+          handleIncomingMessage('narrative_stream', { text: chunk, narratorText: currentLength === 0 ? fakeNarrator : '' })
+          currentLength += 5
+        } else {
+          clearInterval(streamInterval)
+          handleIncomingMessage('narrative_complete', {
+            fullText: fakeResponse,
+            narratorText: fakeNarrator,
+            options: fakeOptions
           })
-        }, 1000)
-        
-      }, 1500)
-    }
+          
+          // 模拟触发后台传闻事件和涟漪
+          if (Mock.Random.boolean()) {
+            setTimeout(() => {
+              handleIncomingMessage('ripple_brief', {
+                title: Mock.Random.pick(['世界线变动', '好感度变化', '势力警觉']),
+                content: Mock.Random.csentence(10, 20),
+                type: Mock.Random.pick(['info', 'success', 'warning', 'error'])
+              })
+            }, 1000)
+          }
+
+          if (Mock.Random.boolean()) {
+            setTimeout(() => {
+              handleIncomingMessage('background_event', {
+                content: `传闻：${Mock.Random.csentence(15, 30)}`
+              })
+            }, 2000)
+          }
+        }
+      }, 100)
+    }, 500)
   }
 
   const disconnect = () => {

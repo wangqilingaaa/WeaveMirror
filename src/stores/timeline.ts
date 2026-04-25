@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import Mock from 'mockjs'
 
 export interface YearbookEvent {
   id: string
@@ -26,12 +27,27 @@ export const useTimelineStore = defineStore('timeline', () => {
     return new Promise<void>((resolve) => {
       setTimeout(() => {
         if (!events.value.some(e => e.worldId === worldId)) {
-          // 模拟年鉴数据
+          // 使用 Mock 生成丰富的年鉴数据
+          const mockEvents = Mock.mock({
+            'events|15-30': [
+              {
+                'id': '@guid',
+                'worldId': worldId,
+                'year|1-1000': 1,
+                'title': '@ctitle(4, 12)',
+                'description': '@cparagraph(1, 3)',
+                'type|1': ['info', 'success', 'warning', 'error']
+              }
+            ]
+          }).events
+          
+          // 按照年份排序
+          mockEvents.sort((a: YearbookEvent, b: YearbookEvent) => a.year - b.year)
+
+          // 模拟年鉴数据（加入固定关键事件）
           events.value.push(
             { id: `evt_${worldId}_1`, worldId, year: 1, title: '世界诞生', description: '在无尽的虚空中，这个世界的第一缕光芒亮起。', type: 'info' },
-            { id: `evt_${worldId}_2`, worldId, year: 100, title: '大分裂时代', description: '由于魔法能源的枯竭，各个种族开始了旷日持久的争夺战。', type: 'error' },
-            { id: `evt_${worldId}_3`, worldId, year: 350, title: '停战协议', description: '三大国在世界树下签订了长达百年的和平契约。', type: 'success' },
-            { id: `evt_${worldId}_4`, worldId, year: 400, title: '新纪元', description: '机械与魔法的结合带来了第一次工业革命。', type: 'warning' }
+            ...mockEvents
           )
         }
         resolve()
@@ -43,13 +59,38 @@ export const useTimelineStore = defineStore('timeline', () => {
     return new Promise<void>((resolve) => {
       setTimeout(() => {
         if (!branches.value.some(b => b.worldId === worldId)) {
-          // 模拟分支树数据
-          branches.value.push(
-            { id: `b_${worldId}_1`, worldId, name: '主时间线 (Prime)', parentId: null, isCurrent: true },
-            { id: `b_${worldId}_2`, worldId, name: '分支：拯救村庄', parentId: `b_${worldId}_1`, isCurrent: false },
-            { id: `b_${worldId}_3`, worldId, name: '分支：加入反叛军', parentId: `b_${worldId}_1`, isCurrent: false },
-            { id: `b_${worldId}_4`, worldId, name: '分支：背叛同伴', parentId: `b_${worldId}_3`, isCurrent: false }
-          )
+          // 基础主线
+          const rootBranchId = `b_${worldId}_root`
+          branches.value.push({ id: rootBranchId, worldId, name: '主时间线 (Prime)', parentId: null, isCurrent: true })
+          
+          // 使用 Mock 生成丰富的树形分支数据
+          const mockBranches = Mock.mock({
+            'branches|5-12': [
+              {
+                'id': '@guid',
+                'worldId': worldId,
+                'name': '分支：@ctitle(4, 8)',
+                'parentId': rootBranchId,
+                'isCurrent': false
+              }
+            ]
+          }).branches
+
+          // 为部分分支添加子分支，形成深度
+          const subBranches: TimelineBranch[] = []
+          mockBranches.forEach((b: TimelineBranch) => {
+            if (Mock.Random.boolean()) {
+              subBranches.push({
+                id: Mock.Random.guid(),
+                worldId,
+                name: '分支：' + Mock.Random.ctitle(4, 8),
+                parentId: b.id,
+                isCurrent: false
+              })
+            }
+          })
+
+          branches.value.push(...mockBranches, ...subBranches)
         }
         resolve()
       }, 300)
