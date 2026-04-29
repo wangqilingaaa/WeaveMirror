@@ -82,10 +82,21 @@ $theme-radii: (
   'lg': $radius-lg,
 );
 
+// ==================== 缓动函数 ====================
+
+/** 缓出 — 快速开始、平滑结束，适合入场动画 */
+$ease-out: cubic-bezier(0, 0, 0.2, 1);
+/** 缓入 — 平滑开始、快速结束，适合离场动画 */
+$ease-in: cubic-bezier(0.4, 0, 1, 1);
+/** 缓入缓出 — 两端平滑，适合 hover/hover 类交互 */
+$ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+/** 弹性减速 — 轻微弹性，适合卡片等元素的入场（不刺眼） */
+$ease-out-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+
 // ==================== 过渡动画 ====================
 
-$transition-fast: 200ms ease;
-$transition-normal: 300ms ease;
+$transition-fast: 200ms $ease-in-out;
+$transition-normal: 350ms $ease-out;
 
 $theme-transitions: (
   'fast': $transition-fast,

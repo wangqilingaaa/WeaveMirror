@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onErrorCaptured, onMounted } from 'vue'
-import { NConfigProvider, NGlobalStyle, NMessageProvider, NDialogProvider, NSpin } from 'naive-ui'
+import { NConfigProvider, NGlobalStyle, NMessageProvider, NDialogProvider, NSpin, darkTheme } from 'naive-ui'
 import { useAppStore } from './stores/app'
 import MessageApiSetter from './components/common/MessageApiSetter.vue'
 
@@ -13,7 +13,7 @@ const isDark = computed(() => {
   return appStore.themeMode === 'dark'
 })
 
-const theme = computed(() => (isDark.value ? null : null))
+const theme = computed(() => (isDark.value ? darkTheme : null))
 
 onMounted(() => {
   if (window.matchMedia) {
@@ -60,14 +60,15 @@ onErrorCaptured((err, _instance, info) => {
 </template>
 
 <style lang="scss">
-// App.vue 专属样式（全局样式已移至 src/styles/）
 .app-provider {
   height: 100vh;
   width: 100vw;
+  background-color: var(--color-bg-deep);
 }
 
 .app-container {
   height: 100%;
   position: relative;
+  background-color: var(--color-bg-deep);
 }
 </style>

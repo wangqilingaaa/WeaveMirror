@@ -28,21 +28,38 @@ html, body {
 }
 
 // ==================== 路由过渡 ====================
+//
+// 设计思路：
+// - 使用 scale + blur 替代 translateY，避免垂直滑动带来的割裂感
+// - 离场动画稍快（保证用户不等待），入场动画稍慢（视觉上更从容）
+// - blur 在离场/入场时模糊画面，消除边缘闪切感
 
-.page-fade-enter-active,
 .page-fade-leave-active {
-  transition: opacity $transition-normal, transform $transition-normal;
+  transition:
+    opacity 220ms $ease-in,
+    transform 220ms $ease-in,
+    filter 220ms $ease-in;
+}
+
+.page-fade-enter-active {
+  transition:
+    opacity 400ms $ease-out,
+    transform 400ms $ease-out,
+    filter 400ms $ease-out;
 }
 
 .page-fade-enter-from,
 .page-fade-leave-to {
   opacity: 0;
-  transform: translateY(8px);
+  transform: scale(0.97);
+  filter: blur(4px);
 }
+
+// ==================== 加载遮罩过渡 ====================
 
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity $transition-fast;
+  transition: opacity 200ms $ease-in-out;
 }
 
 .fade-enter-from,
@@ -64,6 +81,25 @@ html, body {
   align-items: center;
   justify-content: center;
   z-index: 9999;
+}
+
+// ==================== Naive UI 组件动画微调 ====================
+//
+// 将 Naive UI 内部弹窗/消息等动画统一为缓入缓出曲线，
+// 消除默认 ease 带来的突兀感。
+
+.n-fade-in-enter-active,
+.n-fade-in-leave-active,
+.n-fade-in-scale-up-enter-active,
+.n-fade-in-scale-up-leave-active {
+  transition-timing-function: $ease-in-out !important;
+}
+
+.n-slide-in-from-top-enter-active,
+.n-slide-in-from-top-leave-active,
+.n-slide-in-from-bottom-enter-active,
+.n-slide-in-from-bottom-leave-active {
+  transition-timing-function: $ease-in-out !important;
 }
 
 // ==================== 可访问性 ====================
