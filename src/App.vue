@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, onErrorCaptured, onMounted } from 'vue'
-import { NConfigProvider, NGlobalStyle, NMessageProvider, NDialogProvider, NSpin, darkTheme } from 'naive-ui'
+import { NConfigProvider, NGlobalStyle, NMessageProvider, NDialogProvider, NSpin } from 'naive-ui'
 import { useAppStore } from './stores/app'
 import MessageApiSetter from './components/common/MessageApiSetter.vue'
 
 const appStore = useAppStore()
 
-// Theme configuration
 const isDark = computed(() => {
   if (appStore.themeMode === 'auto') {
     return !!window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -14,29 +13,25 @@ const isDark = computed(() => {
   return appStore.themeMode === 'dark'
 })
 
-const theme = computed(() => (isDark.value ? darkTheme : null))
+const theme = computed(() => (isDark.value ? null : null))
 
-// Setup system theme detection
 onMounted(() => {
   if (window.matchMedia) {
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (appStore.themeMode === 'auto') {
-        // Force reactivity update if in auto mode
         appStore.setThemeMode('auto')
       }
     })
   }
 })
 
-// Global Error Boundary
 onErrorCaptured((err, _instance, info) => {
   console.error('[Global Error Boundary]', err, info)
-  // Save to global error state if needed, or trigger a dialog/message
   appStore.setGlobalError(err as Error)
   if (window.$message) {
     window.$message.error('发生渲染或交互错误，请尝试刷新页面。')
   }
-  return false // prevent error from propagating further if handled
+  return false
 })
 </script>
 
@@ -52,11 +47,9 @@ onErrorCaptured((err, _instance, info) => {
                 <component :is="Component" />
               </transition>
             </router-view>
-            
-            <!-- Global Loading Indicator -->
             <transition name="fade">
               <div v-if="appStore.isGlobalLoading" class="global-loading-overlay">
-                <n-spin size="large" description="正在加载中，请稍候..." />
+                <n-spin size="large" />
               </div>
             </transition>
           </div>
@@ -67,9 +60,37 @@ onErrorCaptured((err, _instance, info) => {
 </template>
 
 <style>
-/* CSS Variable setup and smooth transitions */
 :root {
-  --app-transition-duration: 0.5s;
+  --color-bg-deep: #07060b;
+  --color-bg-main: #0e0c14;
+  --color-bg-card: #16131f;
+  --color-primary: #b48eff;
+  --color-text-body: #eee8f5;
+  --color-text-desc: #a99ec2;
+  --color-text-muted: #6b607a;
+  --color-border: rgba(180, 142, 255, 0.12);
+  --color-border-hover: rgba(180, 142, 255, 0.3);
+  --color-error: #f5717a;
+  --color-tag-pink: #ff7eb3;
+  --color-tag-cyan: #5ce0d8;
+
+  --font-title: 'Noto Serif SC', 'Georgia', 'Times New Roman', serif;
+  --font-body: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+  --spacing-3xl: 64px;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  --transition-fast: 200ms ease;
+  --transition-normal: 300ms ease;
 }
 
 html, body {
@@ -77,19 +98,23 @@ html, body {
   padding: 0;
   width: 100%;
   height: 100%;
-  scroll-behavior: smooth; /* 实现滚动行为的平滑优化 */
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--color-text-body);
+  background-color: var(--color-bg-deep);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* 焦点状态键盘可访问性 */
 *:focus-visible {
-  outline: 2px solid #2080f0;
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
 
 .app-provider {
   height: 100vh;
   width: 100vw;
-  transition: background-color var(--app-transition-duration) ease, color var(--app-transition-duration) ease;
 }
 
 .app-container {
@@ -97,14 +122,13 @@ html, body {
   position: relative;
 }
 
-/* Global loading overlay */
 .global-loading-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(255, 255, 255, 0.6);
+  background-color: rgba(7, 6, 11, 0.7);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -112,26 +136,20 @@ html, body {
   z-index: 9999;
 }
 
-html.dark .global-loading-overlay {
-  background-color: rgba(0, 0, 0, 0.6);
-}
-
-/* Page transitions */
 .page-fade-enter-active,
 .page-fade-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity var(--transition-normal), transform var(--transition-normal);
 }
 
 .page-fade-enter-from,
 .page-fade-leave-to {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(8px);
 }
 
-/* Empty/Loading Transitions */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.3s ease;
+  transition: opacity var(--transition-fast);
 }
 
 .fade-enter-from,
@@ -139,14 +157,13 @@ html.dark .global-loading-overlay {
   opacity: 0;
 }
 
-/* 8px Grid Utility Classes */
-.mb-1 { margin-bottom: 8px; }
-.mb-2 { margin-bottom: 16px; }
-.mb-3 { margin-bottom: 24px; }
-.mb-4 { margin-bottom: 32px; }
-
-.p-1 { padding: 8px; }
-.p-2 { padding: 16px; }
-.p-3 { padding: 24px; }
-.p-4 { padding: 32px; }
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
 </style>

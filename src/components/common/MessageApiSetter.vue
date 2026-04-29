@@ -1,12 +1,9 @@
 <script setup lang="ts">
 import { useMessage } from 'naive-ui'
-import { onMounted } from 'vue'
 
+/** 将 Naive UI 的 message API 挂载到 window 上，方便全局使用 */
 const message = useMessage()
-
-onMounted(() => {
-  window.$message = message
-})
+window.$message = message
 </script>
 
 <template>
