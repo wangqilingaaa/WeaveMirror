@@ -77,7 +77,7 @@ async function handleRegister() {
 
     await appStore.register(params)
     message.success('欢迎到来，冒险者。你的传说即将开始。')
-    router.push({ name: 'Home' })
+    router.push('/')
   } catch (err: any) {
     if (err?.message) {
       message.error(err.message)
@@ -210,7 +210,7 @@ function goToLogin() {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .register-page {
   min-height: 100vh;
   display: flex;
@@ -228,6 +228,7 @@ function goToLogin() {
   width: 100%;
 }
 
+// ==================== 品牌区域 ====================
 .brand-section {
   flex: 1;
   min-width: 0;
@@ -265,6 +266,7 @@ function goToLogin() {
   color: var(--color-text-desc);
 }
 
+// ==================== 注册卡片 ====================
 .register-card {
   width: 380px;
   padding: 32px;
@@ -289,49 +291,51 @@ function goToLogin() {
   color: var(--color-text-desc);
 }
 
+// ==================== 表单覆盖（SCSS 嵌套 + :deep） ====================
 .register-form {
   margin-bottom: 20px;
+
+  :deep(.n-form-item-label) {
+    font-size: 13px;
+    color: var(--color-text-desc);
+  }
+
+  :deep(.n-input) {
+    --n-color: rgba(255, 255, 255, 0.04);
+    --n-color-focus: rgba(255, 255, 255, 0.06);
+    --n-border: 1px solid var(--color-border);
+    --n-border-focus: 1px solid var(--color-primary);
+    --n-box-shadow-focus: 0 0 0 3px rgba(180, 142, 255, 0.15);
+    --n-text-color: var(--color-text-body);
+    --n-placeholder-color: var(--color-text-muted);
+    --n-caret-color: var(--color-primary);
+    --n-border-hover: 1px solid var(--color-border-hover);
+    border-radius: var(--radius-sm);
+  }
+
+  :deep(.n-input--error) {
+    --n-border: 1px solid var(--color-error);
+    --n-box-shadow-focus: 0 0 0 3px rgba(245, 113, 122, 0.15);
+  }
+
+  :deep(.n-date-picker) {
+    --n-border-radius: var(--radius-sm);
+
+    .n-input {
+      --n-color: rgba(255, 255, 255, 0.04);
+      --n-color-focus: rgba(255, 255, 255, 0.06);
+      --n-border: 1px solid var(--color-border);
+      --n-border-focus: 1px solid var(--color-primary);
+      --n-box-shadow-focus: 0 0 0 3px rgba(180, 142, 255, 0.15);
+      --n-text-color: var(--color-text-body);
+      --n-placeholder-color: var(--color-text-muted);
+      --n-caret-color: var(--color-primary);
+      --n-border-hover: 1px solid var(--color-border-hover);
+    }
+  }
 }
 
-.register-form :deep(.n-form-item-label) {
-  font-size: 13px;
-  color: var(--color-text-desc);
-}
-
-.register-form :deep(.n-input) {
-  --n-color: rgba(255, 255, 255, 0.04);
-  --n-color-focus: rgba(255, 255, 255, 0.06);
-  --n-border: 1px solid var(--color-border);
-  --n-border-focus: 1px solid var(--color-primary);
-  --n-box-shadow-focus: 0 0 0 3px rgba(180, 142, 255, 0.15);
-  --n-text-color: var(--color-text-body);
-  --n-placeholder-color: var(--color-text-muted);
-  --n-caret-color: var(--color-primary);
-  --n-border-hover: 1px solid var(--color-border-hover);
-  border-radius: var(--radius-sm);
-}
-
-.register-form :deep(.n-input--error) {
-  --n-border: 1px solid var(--color-error);
-  --n-box-shadow-focus: 0 0 0 3px rgba(245, 113, 122, 0.15);
-}
-
-.register-form :deep(.n-date-picker) {
-  --n-border-radius: var(--radius-sm);
-}
-
-.register-form :deep(.n-date-picker .n-input) {
-  --n-color: rgba(255, 255, 255, 0.04);
-  --n-color-focus: rgba(255, 255, 255, 0.06);
-  --n-border: 1px solid var(--color-border);
-  --n-border-focus: 1px solid var(--color-primary);
-  --n-box-shadow-focus: 0 0 0 3px rgba(180, 142, 255, 0.15);
-  --n-text-color: var(--color-text-body);
-  --n-placeholder-color: var(--color-text-muted);
-  --n-caret-color: var(--color-primary);
-  --n-border-hover: 1px solid var(--color-border-hover);
-}
-
+// ==================== 按钮 ====================
 .btn-primary {
   height: 44px;
   font-size: 15px;
@@ -341,15 +345,15 @@ function goToLogin() {
   color: #07060b;
   border: none;
   transition: box-shadow var(--transition-fast), transform var(--transition-fast);
-}
 
-.btn-primary:hover {
-  box-shadow: 0 0 20px rgba(180, 142, 255, 0.3);
-  transform: translateY(-1px);
-}
+  &:hover {
+    box-shadow: 0 0 20px rgba(180, 142, 255, 0.3);
+    transform: translateY(-1px);
+  }
 
-.btn-primary:active {
-  transform: translateY(0);
+  &:active {
+    transform: translateY(0);
+  }
 }
 
 .btn-text {
@@ -361,13 +365,14 @@ function goToLogin() {
   text-align: center;
   font-size: 13px;
   color: var(--color-text-muted);
+
+  :deep(.n-button) {
+    font-size: 13px;
+    margin-left: 4px;
+  }
 }
 
-.login-link :deep(.n-button) {
-  font-size: 13px;
-  margin-left: 4px;
-}
-
+// ==================== 响应式 ====================
 @media (max-width: 768px) {
   .page-inner {
     flex-direction: column;

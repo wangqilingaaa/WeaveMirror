@@ -1,0 +1,122 @@
+// ==================== 颜色系统 ====================
+
+// -- 品牌色 --
+$color-primary: #b48eff;
+
+// -- 背景色 --
+$color-bg-deep: #07060b;
+$color-bg-main: #0e0c14;
+$color-bg-card: #16131f;
+
+// -- 文本色 --
+$color-text-body: #eee8f5;
+$color-text-desc: #a99ec2;
+$color-text-muted: #6b607a;
+
+// -- 边框色 --
+$color-border: rgba(180, 142, 255, 0.12);
+$color-border-hover: rgba(180, 142, 255, 0.3);
+
+// -- 语义色 --
+$color-error: #f5717a;
+
+// -- 标签色 --
+$color-tag-pink: #ff7eb3;
+$color-tag-cyan: #5ce0d8;
+
+// -- 主题色映射（用于循环生成 CSS 变量） --
+$theme-colors: (
+  'primary': $color-primary,
+  'bg-deep': $color-bg-deep,
+  'bg-main': $color-bg-main,
+  'bg-card': $color-bg-card,
+  'text-body': $color-text-body,
+  'text-desc': $color-text-desc,
+  'text-muted': $color-text-muted,
+  'border': $color-border,
+  'border-hover': $color-border-hover,
+  'error': $color-error,
+  'tag-pink': $color-tag-pink,
+  'tag-cyan': $color-tag-cyan,
+);
+
+// ==================== 字体系统 ====================
+
+$font-title: 'Noto Serif SC', 'Georgia', 'Times New Roman', serif;
+$font-body: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+$theme-fonts: (
+  'title': $font-title,
+  'body': $font-body,
+);
+
+// ==================== 间距系统 ====================
+
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+$spacing-2xl: 48px;
+$spacing-3xl: 64px;
+
+$theme-spacings: (
+  'xs': $spacing-xs,
+  'sm': $spacing-sm,
+  'md': $spacing-md,
+  'lg': $spacing-lg,
+  'xl': $spacing-xl,
+  '2xl': $spacing-2xl,
+  '3xl': $spacing-3xl,
+);
+
+// ==================== 圆角系统 ====================
+
+$radius-sm: 6px;
+$radius-md: 10px;
+$radius-lg: 14px;
+
+$theme-radii: (
+  'sm': $radius-sm,
+  'md': $radius-md,
+  'lg': $radius-lg,
+);
+
+// ==================== 过渡动画 ====================
+
+$transition-fast: 200ms ease;
+$transition-normal: 300ms ease;
+
+$theme-transitions: (
+  'fast': $transition-fast,
+  'normal': $transition-normal,
+);
+
+// ==================== 生成 CSS 自定义属性 ====================
+
+:root {
+  // 颜色
+  @each $key, $value in $theme-colors {
+    --color-#{$key}: #{$value};
+  }
+
+  // 字体
+  @each $key, $value in $theme-fonts {
+    --font-#{$key}: #{$value};
+  }
+
+  // 间距
+  @each $key, $value in $theme-spacings {
+    --spacing-#{$key}: #{$value};
+  }
+
+  // 圆角
+  @each $key, $value in $theme-radii {
+    --radius-#{$key}: #{$value};
+  }
+
+  // 过渡
+  @each $key, $value in $theme-transitions {
+    --transition-#{$key}: #{$value};
+  }
+}

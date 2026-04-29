@@ -47,7 +47,7 @@ client.interceptors.response.use(
           // Token 过期，清除本地认证信息并跳转登录页
           localStorage.removeItem('weavemirror_token')
           localStorage.removeItem('weavemirror_user')
-          window.location.href = '/login'
+          // window.location.href = '/login'
           return Promise.reject(new Error('登录已过期，请重新登录'))
         case 403:
           return Promise.reject(new Error('没有权限执行此操作'))

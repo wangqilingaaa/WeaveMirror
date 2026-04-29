@@ -1,61 +1,79 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAppStore } from '@/stores/app'
-import type { RouteRecordRaw } from 'vue-router'
 
-/** 路由配置表 */
-const routes: RouteRecordRaw[] = [
-  {
-    path: '/',
-    name: 'Home',
-    component: () => import('@/views/Home.vue'),
-    meta: { title: '织世镜 · 首页', requiresAuth: true }
-  },
-  {
-    path: '/login',
-    name: 'Login',
-    component: () => import('@/views/Login.vue'),
-    meta: { title: '织世镜 · 登录', requiresAuth: false }
-  },
-  {
-    path: '/register',
-    name: 'Register',
-    component: () => import('@/views/Register.vue'),
-    meta: { title: '织世镜 · 注册', requiresAuth: false }
-  },
-  {
-    /** 未匹配路由重定向到首页 */
-    path: '/:pathMatch(.*)*',
-    redirect: '/'
-  }
-]
+/** localStorage 键名常量（与 stores/app.ts 保持一致） */
+const STORAGE_KEYS = {
+  TOKEN: 'weavemirror_token'
+} as const
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes: [
+    {
+      path: '/login',
+      name: 'Login',
+      component: () => import('@/views/Login.vue'),
+      meta: { guest: true }
+    },
+    {
+      path: '/register',
+      name: 'Register',
+      component: () => import('@/views/Register.vue'),
+      meta: { guest: true }
+    },
+    {
+      path: '/',
+      redirect: '/workshop'
+    },
+    {
+      path: '/workshop',
+      name: 'Workshop',
+      component: () => import('@/views/CreationWorkshopView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/stage/:worldId',
+      name: 'Stage',
+      component: () => import('@/views/NarrativeStageView.vue'),
+      props: true,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/worldbook/:worldId',
+      name: 'WorldBook',
+      component: () => import('@/views/WorldBookView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/storyline/:characterId',
+      name: 'Storyline',
+      component: () => import('@/views/PersonalEpicView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/console/:worldId',
+      name: 'Console',
+      component: () => import('@/views/SystemConsoleView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/workshop'
+    }
+  ]
 })
 
-/** 路由守卫：未登录用户重定向到登录页 */
 router.beforeEach((to, _from, next) => {
-  const appStore = useAppStore()
+  // 直接读 localStorage，避免跨 Pinia store 实例的状态同步问题
+  const token = localStorage.getItem(STORAGE_KEYS.TOKEN)
+  const isLoggedIn = !!token
 
-  // 更新页面标题
-  if (to.meta.title) {
-    document.title = to.meta.title as string
+  if (to.meta.requiresAuth && !isLoggedIn) {
+    next('/login')
+  } else if (to.meta.guest && isLoggedIn) {
+    next('/workshop')
+  } else {
+    next()
   }
-
-  // 需要登录但未登录时，重定向到登录页
-  if (to.meta.requiresAuth && !appStore.isLoggedIn) {
-    next({ name: 'Login', query: { redirect: to.fullPath } })
-    return
-  }
-
-  // 已登录用户访问登录/注册页时，重定向到首页
-  if (!to.meta.requiresAuth && appStore.isLoggedIn && (to.name === 'Login' || to.name === 'Register')) {
-    next({ name: 'Home' })
-    return
-  }
-
-  next()
 })
 
 export default router

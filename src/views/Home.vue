@@ -223,7 +223,7 @@ function getTagColor(type: string): string {
   </div>
 </template>
 
-<style scoped>
+<style scoped lang="scss">
 .home-page {
   min-height: 100vh;
   display: flex;
@@ -278,10 +278,10 @@ function getTagColor(type: string): string {
   font-size: 13px;
   color: var(--color-text-muted);
   transition: color var(--transition-fast);
-}
 
-.btn-logout:hover {
-  color: var(--color-error) !important;
+  &:hover {
+    color: var(--color-error) !important;
+  }
 }
 
 /* ==================== 主体 ==================== */
@@ -328,11 +328,11 @@ function getTagColor(type: string): string {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   transition: transform var(--transition-fast), box-shadow var(--transition-fast);
-}
 
-.character-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  &:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
 }
 
 .card-avatar {
@@ -421,12 +421,12 @@ function getTagColor(type: string): string {
   border-color: var(--color-primary);
   color: var(--color-primary);
   transition: all var(--transition-fast);
-}
 
-.btn-chat:hover {
-  background-color: var(--color-primary);
-  color: #07060b;
-  box-shadow: 0 0 12px rgba(180, 142, 255, 0.2);
+  &:hover {
+    background-color: var(--color-primary);
+    color: #07060b;
+    box-shadow: 0 0 12px rgba(180, 142, 255, 0.2);
+  }
 }
 
 /* ==================== 响应式 ==================== */
