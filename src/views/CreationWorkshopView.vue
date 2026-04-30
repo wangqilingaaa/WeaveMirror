@@ -7,7 +7,7 @@ import {
 } from 'naive-ui'
 import { AddOutline, SettingsOutline } from '@vicons/ionicons5'
 import { useAppStore } from '@/stores/app'
-import { listWorldsApi, createWorldApi, getWorldApi, updateWorldApi } from '@/api'
+import { listWorldsApi, createWorldApi, getWorldApi, updateWorldApi, enhanceWorldSettingsApi } from '@/api'
 import WorldSettingsForm from '@/components/world/WorldSettingsForm.vue'
 import type { World, WorldSettings } from '@/types'
 
@@ -23,6 +23,7 @@ const loading = ref(false)
 const showCreateModal = ref(false)
 const newWorldName = ref('')
 const creating = ref(false)
+const enhancing = ref(false)
 const createFormRef = ref<InstanceType<typeof WorldSettingsForm> | null>(null)
 
 // ==================== 编辑世界 ====================
@@ -75,6 +76,61 @@ function openCreateModal() {
   newWorldName.value = ''
   showCreateModal.value = true
   createFormRef.value?.reset()
+}
+
+// ==================== AI 增强 ====================
+
+async function handleCreateEnhance() {
+  if (!newWorldName.value.trim()) {
+    message.warning('请先输入世界名称')
+    return
+  }
+  const settings = createFormRef.value?.getSettings() ?? {}
+  if (Object.keys(settings).length === 0) {
+    message.warning('请先填写一些设定内容')
+    return
+  }
+  enhancing.value = true
+  try {
+    const resp = await enhanceWorldSettingsApi({
+      world_name: newWorldName.value.trim(),
+      settings
+    })
+    createFormRef.value?.reset(resp.enhanced_settings)
+    message.success('AI 优化完成，设定已更新')
+  } catch (err: any) {
+    message.error(err?.message || 'AI 优化失败')
+  } finally {
+    enhancing.value = false
+  }
+}
+
+async function handleEditEnhance() {
+  if (!editWorldName.value.trim()) return
+  const settings = editFormRef.value?.getSettings() ?? {}
+  if (Object.keys(settings).length === 0) {
+    message.warning('请先填写一些设定内容')
+    return
+  }
+  enhancing.value = true
+  try {
+    const resp = await enhanceWorldSettingsApi({
+      world_name: editWorldName.value.trim(),
+      settings
+    })
+    // 更新 editingWorld，watch 会同步到表单
+    if (editingWorld.value) {
+      editingWorld.value = {
+        ...editingWorld.value,
+        ...resp.enhanced_settings
+      }
+    }
+    message.success('AI 优化完成，设定已更新')
+  } catch (err: any) {
+    message.error(err?.message || 'AI 优化失败')
+  } finally {
+    enhancing.value = false
+  }
 }
 
 // ==================== 编辑逻辑 ====================
@@ -233,7 +289,11 @@ onMounted(loadWorlds)
           />
         </NFormItem>
 
-        <WorldSettingsForm ref="createFormRef" />
+        <WorldSettingsForm
+          ref="createFormRef"
+          :enhancing="enhancing"
+          @enhance="handleCreateEnhance"
+        />
 
         <NSpace justify="end" style="margin-top: 20px">
           <NButton @click="showCreateModal = false" :disabled="creating">
@@ -266,6 +326,8 @@ onMounted(loadWorlds)
         <WorldSettingsForm
           ref="editFormRef"
           :settings="editingWorld ? worldToSettings(editingWorld) : undefined"
+          :enhancing="enhancing"
+          @enhance="handleEditEnhance"
         />
 
         <NSpace justify="end" style="margin-top: 20px">

@@ -11,7 +11,9 @@ import type {
   SwitchBranchReq,
   BranchTreeData,
   SwitchBranchResp,
-  YearbookData
+  YearbookData,
+  AIEnhanceSettingsReq,
+  AIEnhanceSettingsResp
 } from '@/types'
 
 // ==================== 世界观 CRUD ====================
@@ -92,4 +94,14 @@ export function switchActiveTimelineApi(worldId: number, params: SwitchBranchReq
  */
 export function getYearbookApi(worldId: number, params?: { page?: number; limit?: number }): Promise<YearbookData> {
   return client.get<ApiResponse<YearbookData>>(`/api/v1/worlds/${worldId}/yearbook`, { params }).then(extractData)
+}
+
+// ==================== AI 增强 ====================
+
+/**
+ * AI 优化世界观设定
+ * POST /ai/enhance-world-settings
+ */
+export function enhanceWorldSettingsApi(params: AIEnhanceSettingsReq): Promise<AIEnhanceSettingsResp> {
+  return client.post<ApiResponse<AIEnhanceSettingsResp>>('/api/v1/ai/enhance-world-settings', params).then(extractData)
 }

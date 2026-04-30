@@ -30,7 +30,8 @@ export {
   createBranchApi,
   getBranchTreeApi,
   switchActiveTimelineApi,
-  getYearbookApi
+  getYearbookApi,
+  enhanceWorldSettingsApi
 } from './world'
 
 export {

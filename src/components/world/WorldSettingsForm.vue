@@ -3,7 +3,7 @@ import { reactive, computed, watch } from 'vue'
 import {
   NInput, NSelect, NSwitch, NButton, NFormItem, NDivider, NIcon
 } from 'naive-ui'
-import { AddOutline, RemoveOutline } from '@vicons/ionicons5'
+import { AddOutline, RemoveOutline, SparklesOutline } from '@vicons/ionicons5'
 import type { WorldSettings, MagicType, TechLevel, EconomyType } from '@/types'
 
 /** 魔法体系选项 */
@@ -37,6 +37,11 @@ const ECONOMY_OPTIONS: { label: string; value: EconomyType }[] = [
 
 const props = defineProps<{
   settings?: WorldSettings
+  enhancing?: boolean
+}>()
+
+const emit = defineEmits<{
+  (e: 'enhance'): void
 }>()
 
 // ==================== 表单数据 ====================
@@ -174,6 +179,23 @@ defineExpose({ getSettings, reset })
 
 <template>
   <div class="settings-form">
+    <!-- AI 优化入口 -->
+    <div class="ai-enhance-bar">
+      <span class="ai-enhance-hint">填写设定后，可让 AI 帮你润色和丰富世界观内容</span>
+      <NButton
+        size="small"
+        secondary
+        :loading="enhancing"
+        :disabled="enhancing"
+        @click="emit('enhance')"
+      >
+        <template #icon>
+          <n-icon><SparklesOutline /></n-icon>
+        </template>
+        AI 优化
+      </NButton>
+    </div>
+
     <!-- ==================== 基础设定 ==================== -->
     <NDivider title-placement="left">基础设定</NDivider>
 
@@ -656,5 +678,29 @@ defineExpose({ getSettings, reset })
     --n-border-hover: 1px solid var(--color-border-hover);
     border-radius: var(--radius-sm);
   }
+}
+
+// ==================== AI 优化入口 ====================
+.ai-enhance-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, rgba(180, 142, 255, 0.04), rgba(142, 180, 255, 0.04));
+  margin-bottom: 8px;
+
+  &:hover {
+    border-color: var(--color-border-hover);
+    background: linear-gradient(135deg, rgba(180, 142, 255, 0.06), rgba(142, 180, 255, 0.06));
+  }
+}
+
+.ai-enhance-hint {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
 }
 </style>
