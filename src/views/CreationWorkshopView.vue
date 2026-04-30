@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NInput, NModal, NForm, NFormItem, useMessage } from 'naive-ui'
-import { AddOutline } from '@vicons/ionicons5'
+import {
+  NButton, NInput, NModal, NForm, NFormItem, useMessage, NSpace,
+  NIcon
+} from 'naive-ui'
+import { AddOutline, SettingsOutline } from '@vicons/ionicons5'
 import { useAppStore } from '@/stores/app'
-import { listWorldsApi, createWorldApi } from '@/api'
-import type { World } from '@/types'
+import { listWorldsApi, createWorldApi, getWorldApi, updateWorldApi } from '@/api'
+import WorldSettingsForm from '@/components/world/WorldSettingsForm.vue'
+import type { World, WorldSettings } from '@/types'
 
 const router = useRouter()
 const appStore = useAppStore()
@@ -14,9 +18,22 @@ const message = useMessage()
 const worlds = ref<World[]>([])
 const loading = ref(false)
 
+// ==================== 创建世界 ====================
+
 const showCreateModal = ref(false)
 const newWorldName = ref('')
 const creating = ref(false)
+const createFormRef = ref<InstanceType<typeof WorldSettingsForm> | null>(null)
+
+// ==================== 编辑世界 ====================
+
+const showEditModal = ref(false)
+const editingWorld = ref<World | null>(null)
+const editWorldName = ref('')
+const editing = ref(false)
+const editFormRef = ref<InstanceType<typeof WorldSettingsForm> | null>(null)
+
+// ==================== 数据加载 ====================
 
 async function loadWorlds() {
   loading.value = true
@@ -32,11 +49,17 @@ async function loadWorlds() {
   }
 }
 
+// ==================== 创建逻辑 ====================
+
 async function handleCreateWorld() {
   if (!newWorldName.value.trim()) return
   creating.value = true
   try {
-    await createWorldApi({ name: newWorldName.value.trim() })
+    const settings = createFormRef.value?.getSettings() ?? {}
+    await createWorldApi({
+      name: newWorldName.value.trim(),
+      settings
+    })
     message.success('世界观已创建')
     showCreateModal.value = false
     newWorldName.value = ''
@@ -47,6 +70,73 @@ async function handleCreateWorld() {
     creating.value = false
   }
 }
+
+function openCreateModal() {
+  newWorldName.value = ''
+  showCreateModal.value = true
+  createFormRef.value?.reset()
+}
+
+// ==================== 编辑逻辑 ====================
+
+/** 将扁平 World 字段转换为 WorldSettings 结构 */
+function worldToSettings(world: World): WorldSettings {
+  return {
+    description: world.description,
+    epoch: world.epoch,
+    current_year: world.current_year,
+    core_rules: world.core_rules,
+    themes: world.themes,
+    tags: world.tags,
+    magic_system: world.magic_system,
+    tech_level: world.tech_level,
+    economy_type: world.economy_type,
+    government: world.government,
+    religion: world.religion,
+    regions: world.regions,
+    factions: world.factions,
+    major_cities: world.major_cities,
+    races: world.races,
+    nsfw_enabled: world.nsfw_enabled,
+    evolution_enabled: world.evolution_enabled,
+    metadata: world.metadata
+  }
+}
+
+async function openEditModal(worldId: number, event: MouseEvent) {
+  event.stopPropagation()
+  try {
+    const world = await getWorldApi(worldId)
+    editingWorld.value = world
+    editWorldName.value = world.name
+    showEditModal.value = true
+    // WorldSettingsForm 的 watch 会自动同步 settings prop 到表单
+  } catch (err: any) {
+    message.error(err?.message || '加载世界观详情失败')
+  }
+}
+
+async function handleEditWorld() {
+  if (!editingWorld.value) return
+  editing.value = true
+  try {
+    const settings = editFormRef.value?.getSettings() ?? {}
+    await updateWorldApi(editingWorld.value.id, {
+      name: editWorldName.value.trim() || undefined,
+      settings
+    })
+    message.success('世界观已更新')
+    showEditModal.value = false
+    editingWorld.value = null
+    await loadWorlds()
+  } catch (err: any) {
+    message.error(err?.message || '更新失败')
+  } finally {
+    editing.value = false
+  }
+}
+
+// ==================== 导航 ====================
 
 function enterWorld(worldId: number) {
   router.push({ name: 'Stage', params: { worldId } })
@@ -93,15 +183,30 @@ onMounted(loadWorlds)
           class="world-card"
           @click="enterWorld(world.id)"
         >
-          <h3 class="world-name">{{ world.name }}</h3>
+          <div class="world-card-head">
+            <h3 class="world-name">{{ world.name }}</h3>
+            <NButton
+              text
+              size="small"
+              class="btn-edit"
+              @click="openEditModal(world.id, $event)"
+            >
+              <template #icon>
+                <n-icon size="18"><SettingsOutline /></n-icon>
+              </template>
+            </NButton>
+          </div>
           <p class="world-meta">
-            {{ world.epoch }} 年 {{ world.current_year }} 年 ·
+            {{ world.epoch || '未知纪元' }} {{ world.current_year ? world.current_year + ' 年' : '' }} ·
             <span class="world-meta-tag">{{ world.nsfw_enabled ? 'NSFW' : 'SFW' }}</span>
           </p>
-          <p v-if="world.settings" class="world-settings">{{ world.settings }}</p>
+          <p v-if="world.description" class="world-desc">{{ world.description }}</p>
+          <div v-if="world.tags?.length" class="world-tags">
+            <span v-for="tag in world.tags.slice(0, 3)" :key="tag" class="world-tag">{{ tag }}</span>
+          </div>
         </div>
 
-        <div class="create-card" @click="showCreateModal = true">
+        <div class="create-card" @click="openCreateModal">
           <n-icon size="28">
             <AddOutline />
           </n-icon>
@@ -110,7 +215,14 @@ onMounted(loadWorlds)
       </div>
     </main>
 
-    <NModal v-model:show="showCreateModal" title="创造新世界" preset="card" style="max-width: 420px">
+    <!-- ==================== 创建世界模态框 ==================== -->
+    <NModal
+      v-model:show="showCreateModal"
+      title="创造新世界"
+      preset="card"
+      style="max-width: 600px"
+      :mask-closable="false"
+    >
       <NForm @submit.prevent="handleCreateWorld">
         <NFormItem label="世界名称" required>
           <NInput
@@ -120,9 +232,50 @@ onMounted(loadWorlds)
             @keyup.enter="handleCreateWorld"
           />
         </NFormItem>
-        <NButton type="primary" :loading="creating" block @click="handleCreateWorld">
-          创造
-        </NButton>
+
+        <WorldSettingsForm ref="createFormRef" />
+
+        <NSpace justify="end" style="margin-top: 20px">
+          <NButton @click="showCreateModal = false" :disabled="creating">
+            取消
+          </NButton>
+          <NButton type="primary" :loading="creating" @click="handleCreateWorld">
+            创造世界
+          </NButton>
+        </NSpace>
+      </NForm>
+    </NModal>
+
+    <!-- ==================== 编辑世界模态框 ==================== -->
+    <NModal
+      v-model:show="showEditModal"
+      title="编辑世界观"
+      preset="card"
+      style="max-width: 600px"
+      :mask-closable="false"
+    >
+      <NForm @submit.prevent="handleEditWorld">
+        <NFormItem label="世界名称">
+          <NInput
+            v-model:value="editWorldName"
+            placeholder="修改世界名称"
+            :disabled="editing"
+          />
+        </NFormItem>
+
+        <WorldSettingsForm
+          ref="editFormRef"
+          :settings="editingWorld ? worldToSettings(editingWorld) : undefined"
+        />
+
+        <NSpace justify="end" style="margin-top: 20px">
+          <NButton @click="showEditModal = false" :disabled="editing">
+            取消
+          </NButton>
+          <NButton type="primary" :loading="editing" @click="handleEditWorld">
+            保存修改
+          </NButton>
+        </NSpace>
       </NForm>
     </NModal>
   </div>
@@ -219,6 +372,7 @@ onMounted(loadWorlds)
 }
 
 .world-card {
+  position: relative;
   background-color: var(--color-bg-card);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -232,12 +386,31 @@ onMounted(loadWorlds)
   }
 }
 
+.world-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
 .world-name {
-  margin: 0 0 8px;
+  margin: 0;
   font-family: var(--font-title);
   font-size: 18px;
   font-weight: 700;
   color: var(--color-text-body);
+}
+
+.btn-edit {
+  flex-shrink: 0;
+  color: var(--color-text-desc);
+  opacity: 0.75;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+
+  &:hover {
+    opacity: 1;
+    color: var(--color-primary) !important;
+  }
 }
 
 .world-meta {
@@ -251,7 +424,7 @@ onMounted(loadWorlds)
   color: var(--color-primary);
 }
 
-.world-settings {
+.world-desc {
   margin: 12px 0 0;
   font-size: 14px;
   line-height: 1.7;
@@ -260,6 +433,23 @@ onMounted(loadWorlds)
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.world-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.world-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  background-color: rgba(180, 142, 255, 0.1);
+  color: var(--color-primary);
+  line-height: 1.6;
 }
 
 .create-card {
@@ -292,5 +482,21 @@ onMounted(loadWorlds)
 .create-text {
   font-size: 14px;
   color: var(--color-text-muted);
+}
+
+// ==================== 模态框样式 ====================
+:deep(.n-modal) {
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+
+  .n-card-header {
+    flex-shrink: 0;
+  }
+
+  .n-card__content {
+    flex: 1;
+    overflow: hidden;
+  }
 }
 </style>

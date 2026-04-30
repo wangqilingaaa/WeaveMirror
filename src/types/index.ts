@@ -70,29 +70,97 @@ export interface CurrentUserResp {
 /** 创建世界观请求 */
 export interface CreateWorldReq {
   name: string
-  settings?: string
-  nsfw_enabled?: boolean
+  settings?: WorldSettings
 }
 
 /** 更新世界观请求 */
 export interface UpdateWorldReq {
   name?: string
-  settings?: string
+  settings?: WorldSettings
 }
 
 /** 世界观 */
+// export interface World {
+//   id: number
+//   user_id: number
+//   name: string
+//   epoch: string
+//   current_year: number
+//   settings?: string
+//   active_timeline_id: number | null
+//   nsfw_enabled: boolean
+//   evolution_enabled: boolean
+//   created_at: string
+//   updated_at: string
+// }
+
 export interface World {
-  id: number
-  user_id: number
-  name: string
-  epoch: string
-  current_year: number
-  settings?: string
-  active_timeline_id: number | null
-  nsfw_enabled: boolean
-  evolution_enabled: boolean
-  created_at: string
-  updated_at: string
+  id: number;                        
+  user_id: number;                   
+  name: string;                      
+  slug: string;                      
+  description: string;               
+  epoch: string;                     
+  current_year: number;              
+  core_rules?: string[];             
+  themes?: string[];                 
+  tags?: string[];                   
+  magic_system?: MagicType;          
+  tech_level?: TechLevel;            
+  economy_type?: EconomyType;        
+  government?: string;               
+  religion?: string;                 
+  regions?: Region[];                
+  factions?: string[];               
+  major_cities?: string[];           
+  races?: string[];                  
+  metadata?: Record<string, any>;    
+  active_timeline_id?: number | null;
+  nsfw_enabled: boolean;             
+  evolution_enabled: boolean;        
+  created_at: string;                
+  updated_at: string;                
+}
+
+export interface WorldSettings {
+  description?: string;
+  epoch?: string;
+  current_year?: number;
+  core_rules?: string[];
+  themes?: string[];
+  tags?: string[];
+  magic_system?: MagicType;
+  tech_level?: TechLevel;
+  economy_type?: EconomyType;
+  government?: string;
+  religion?: string;
+  regions?: Region[];
+  factions?: string[];
+  major_cities?: string[];
+  races?: string[];
+  nsfw_enabled?: boolean;
+  evolution_enabled?: boolean;
+  metadata?: Record<string, any>;
+}
+
+export type MagicType = "none" | "low" | "high" | "unique";
+
+export type TechLevel = 
+  | "stone_age"
+  | "medieval"
+  | "renaissance"
+  | "industrial"
+  | "modern"
+  | "future"
+  | "scifi";
+
+export type EconomyType = "barter" | "currency" | "resource" | "post_scarcity";
+
+export interface Region {
+  name: string;
+  description?: string;
+  climate?: string;
+  notable_places?: string[];
 }
 
 /** 世界观列表响应 */
