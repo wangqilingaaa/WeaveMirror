@@ -40,7 +40,8 @@ export {
   getCharacterApi,
   updateCharacterApi,
   deleteCharacterApi,
-  changeCharacterStateApi
+  changeCharacterStateApi,
+  generateCharacterApi
 } from './character'
 
 export {

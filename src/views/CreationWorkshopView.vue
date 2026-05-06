@@ -5,7 +5,7 @@ import {
   NButton, NInput, NModal, NForm, NFormItem, useMessage, NSpace,
   NIcon
 } from 'naive-ui'
-import { AddOutline, SettingsOutline } from '@vicons/ionicons5'
+import { AddOutline, BookOutline, SettingsOutline } from '@vicons/ionicons5'
 import { useAppStore } from '@/stores/app'
 import { listWorldsApi, createWorldApi, getWorldApi, updateWorldApi, enhanceWorldSettingsApi } from '@/api'
 import WorldSettingsForm from '@/components/world/WorldSettingsForm.vue'
@@ -198,6 +198,11 @@ function enterWorld(worldId: number) {
   router.push({ name: 'Stage', params: { worldId } })
 }
 
+function openWorldBook(worldId: number, event: MouseEvent) {
+  event.stopPropagation()
+  router.push({ name: 'WorldBook', params: { worldId } })
+}
+
 function handleLogout() {
   appStore.logout()
   router.push({ name: 'Login' })
@@ -259,6 +264,19 @@ onMounted(loadWorlds)
           <p v-if="world.description" class="world-desc">{{ world.description }}</p>
           <div v-if="world.tags?.length" class="world-tags">
             <span v-for="tag in world.tags.slice(0, 3)" :key="tag" class="world-tag">{{ tag }}</span>
+          </div>
+          <div class="world-actions">
+            <NButton
+              size="small"
+              secondary
+              class="btn-worldbook"
+              @click="openWorldBook(world.id, $event)"
+            >
+              <template #icon>
+                <n-icon size="16"><BookOutline /></n-icon>
+              </template>
+              世界之书
+            </NButton>
           </div>
         </div>
 
@@ -502,6 +520,20 @@ onMounted(loadWorlds)
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 10px;
+}
+
+.world-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.btn-worldbook {
+  color: var(--color-text-desc);
+
+  &:hover {
+    color: var(--color-primary) !important;
+  }
 }
 
 .world-tag {
