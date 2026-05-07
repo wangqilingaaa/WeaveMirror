@@ -2,14 +2,13 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import {
-  NButton, NInput, NModal, NForm, NFormItem, useMessage, NSpace,
+  NButton, useMessage,
   NIcon
 } from 'naive-ui'
 import { AddOutline, BookOutline, SettingsOutline } from '@vicons/ionicons5'
 import { useAppStore } from '@/stores/app'
-import { listWorldsApi, createWorldApi, getWorldApi, updateWorldApi, enhanceWorldSettingsApi } from '@/api'
-import WorldSettingsForm from '@/components/world/WorldSettingsForm.vue'
-import type { World, WorldSettings } from '@/types'
+import { listWorldsApi } from '@/api'
+import type { World } from '@/types'
 
 const router = useRouter()
 const appStore = useAppStore()
@@ -17,22 +16,6 @@ const message = useMessage()
 
 const worlds = ref<World[]>([])
 const loading = ref(false)
-
-// ==================== 创建世界 ====================
-
-const showCreateModal = ref(false)
-const newWorldName = ref('')
-const creating = ref(false)
-const enhancing = ref(false)
-const createFormRef = ref<InstanceType<typeof WorldSettingsForm> | null>(null)
-
-// ==================== 编辑世界 ====================
-
-const showEditModal = ref(false)
-const editingWorld = ref<World | null>(null)
-const editWorldName = ref('')
-const editing = ref(false)
-const editFormRef = ref<InstanceType<typeof WorldSettingsForm> | null>(null)
 
 // ==================== 数据加载 ====================
 
@@ -50,146 +33,13 @@ async function loadWorlds() {
   }
 }
 
-// ==================== 创建逻辑 ====================
-
-async function handleCreateWorld() {
-  if (!newWorldName.value.trim()) return
-  creating.value = true
-  try {
-    const settings = createFormRef.value?.getSettings() ?? {}
-    await createWorldApi({
-      name: newWorldName.value.trim(),
-      settings
-    })
-    message.success('世界观已创建')
-    showCreateModal.value = false
-    newWorldName.value = ''
-    await loadWorlds()
-  } catch (err: any) {
-    message.error(err?.message || '创建失败')
-  } finally {
-    creating.value = false
-  }
+function openCreatePage() {
+  router.push({ name: 'WorldCreate', query: { redirect: '/workshop' } })
 }
 
-function openCreateModal() {
-  newWorldName.value = ''
-  showCreateModal.value = true
-  createFormRef.value?.reset()
-}
-
-// ==================== AI 增强 ====================
-
-async function handleCreateEnhance() {
-  if (!newWorldName.value.trim()) {
-    message.warning('请先输入世界名称')
-    return
-  }
-  const settings = createFormRef.value?.getSettings() ?? {}
-  if (Object.keys(settings).length === 0) {
-    message.warning('请先填写一些设定内容')
-    return
-  }
-  enhancing.value = true
-  try {
-    const resp = await enhanceWorldSettingsApi({
-      world_name: newWorldName.value.trim(),
-      settings
-    })
-    createFormRef.value?.reset(resp.enhanced_settings)
-    message.success('AI 优化完成，设定已更新')
-  } catch (err: any) {
-    message.error(err?.message || 'AI 优化失败')
-  } finally {
-    enhancing.value = false
-  }
-}
-
-async function handleEditEnhance() {
-  if (!editWorldName.value.trim()) return
-  const settings = editFormRef.value?.getSettings() ?? {}
-  if (Object.keys(settings).length === 0) {
-    message.warning('请先填写一些设定内容')
-    return
-  }
-  enhancing.value = true
-  try {
-    const resp = await enhanceWorldSettingsApi({
-      world_name: editWorldName.value.trim(),
-      settings
-    })
-    // 更新 editingWorld，watch 会同步到表单
-    if (editingWorld.value) {
-      editingWorld.value = {
-        ...editingWorld.value,
-        ...resp.enhanced_settings
-      }
-    }
-    message.success('AI 优化完成，设定已更新')
-  } catch (err: any) {
-    message.error(err?.message || 'AI 优化失败')
-  } finally {
-    enhancing.value = false
-  }
-}
-
-// ==================== 编辑逻辑 ====================
-
-/** 将扁平 World 字段转换为 WorldSettings 结构 */
-function worldToSettings(world: World): WorldSettings {
-  return {
-    description: world.description,
-    epoch: world.epoch,
-    current_year: world.current_year,
-    core_rules: world.core_rules,
-    themes: world.themes,
-    tags: world.tags,
-    magic_system: world.magic_system,
-    tech_level: world.tech_level,
-    economy_type: world.economy_type,
-    government: world.government,
-    religion: world.religion,
-    regions: world.regions,
-    factions: world.factions,
-    major_cities: world.major_cities,
-    races: world.races,
-    nsfw_enabled: world.nsfw_enabled,
-    evolution_enabled: world.evolution_enabled,
-    metadata: world.metadata
-  }
-}
-
-async function openEditModal(worldId: number, event: MouseEvent) {
+function openEditPage(worldId: number, event: MouseEvent) {
   event.stopPropagation()
-  try {
-    const world = await getWorldApi(worldId)
-    editingWorld.value = world
-    editWorldName.value = world.name
-    showEditModal.value = true
-    // WorldSettingsForm 的 watch 会自动同步 settings prop 到表单
-  } catch (err: any) {
-    message.error(err?.message || '加载世界观详情失败')
-  }
-}
-
-async function handleEditWorld() {
-  if (!editingWorld.value) return
-  editing.value = true
-  try {
-    const settings = editFormRef.value?.getSettings() ?? {}
-    await updateWorldApi(editingWorld.value.id, {
-      name: editWorldName.value.trim() || undefined,
-      settings
-    })
-    message.success('世界观已更新')
-    showEditModal.value = false
-    editingWorld.value = null
-    await loadWorlds()
-  } catch (err: any) {
-    message.error(err?.message || '更新失败')
-  } finally {
-    editing.value = false
-  }
+  router.push({ name: 'WorldEdit', params: { worldId }, query: { redirect: '/workshop' } })
 }
 
 // ==================== 导航 ====================
@@ -252,7 +102,7 @@ onMounted(loadWorlds)
               text
               size="small"
               class="btn-edit"
-              @click="openEditModal(world.id, $event)"
+              @click="openEditPage(world.id, $event)"
             >
               <template #icon>
                 <n-icon size="18"><SettingsOutline /></n-icon>
@@ -282,7 +132,7 @@ onMounted(loadWorlds)
           </div>
         </div>
 
-        <div class="create-card" @click="openCreateModal">
+        <div class="create-card" @click="openCreatePage">
           <n-icon size="28">
             <AddOutline />
           </n-icon>
@@ -290,76 +140,6 @@ onMounted(loadWorlds)
         </div>
       </div>
     </main>
-
-    <!-- ==================== 创建世界模态框 ==================== -->
-    <NModal
-      v-model:show="showCreateModal"
-      title="创造新世界"
-      preset="card"
-      style="max-width: 600px"
-      :mask-closable="false"
-    >
-      <NForm @submit.prevent="handleCreateWorld">
-        <NFormItem label="世界名称" required>
-          <NInput
-            v-model:value="newWorldName"
-            placeholder="给你的世界取一个名字"
-            :disabled="creating"
-            @keyup.enter="handleCreateWorld"
-          />
-        </NFormItem>
-
-        <WorldSettingsForm
-          ref="createFormRef"
-          :enhancing="enhancing"
-          @enhance="handleCreateEnhance"
-        />
-
-        <NSpace justify="end" style="margin-top: 20px">
-          <NButton @click="showCreateModal = false" :disabled="creating">
-            取消
-          </NButton>
-          <NButton type="primary" :loading="creating" @click="handleCreateWorld">
-            创造世界
-          </NButton>
-        </NSpace>
-      </NForm>
-    </NModal>
-
-    <!-- ==================== 编辑世界模态框 ==================== -->
-    <NModal
-      v-model:show="showEditModal"
-      title="编辑世界观"
-      preset="card"
-      style="max-width: 600px"
-      :mask-closable="false"
-    >
-      <NForm @submit.prevent="handleEditWorld">
-        <NFormItem label="世界名称">
-          <NInput
-            v-model:value="editWorldName"
-            placeholder="修改世界名称"
-            :disabled="editing"
-          />
-        </NFormItem>
-
-        <WorldSettingsForm
-          ref="editFormRef"
-          :settings="editingWorld ? worldToSettings(editingWorld) : undefined"
-          :enhancing="enhancing"
-          @enhance="handleEditEnhance"
-        />
-
-        <NSpace justify="end" style="margin-top: 20px">
-          <NButton @click="showEditModal = false" :disabled="editing">
-            取消
-          </NButton>
-          <NButton type="primary" :loading="editing" @click="handleEditWorld">
-            保存修改
-          </NButton>
-        </NSpace>
-      </NForm>
-    </NModal>
   </div>
 </template>
 

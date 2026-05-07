@@ -32,31 +32,22 @@ import {
 } from '@vicons/ionicons5'
 import {
   createBranchApi,
-  createCharacterApi,
   deleteCharacterApi,
-  enhanceWorldSettingsApi,
-  generateCharacterApi,
   getBranchTreeApi,
   getCharacterApi,
   getWorldApi,
   getYearbookApi,
   listCharactersApi,
-  switchActiveTimelineApi,
-  updateCharacterApi,
-  updateWorldApi
+  switchActiveTimelineApi
 } from '@/api'
 import type {
   BranchNode,
   Character,
-  CharacterInput,
   CreateBranchReq,
   StoryBranch,
   World,
-  WorldEvent,
-  WorldSettings
+  WorldEvent
 } from '@/types'
-import WorldSettingsForm from '@/components/world/WorldSettingsForm.vue'
-import CharacterFormModal from '@/components/worldbook/CharacterFormModal.vue'
 
 interface FlatBranchItem {
   branch: StoryBranch
@@ -94,14 +85,6 @@ const branchTree = ref<BranchNode[]>([])
 const characters = ref<Character[]>([])
 const yearbookEvents = ref<WorldEvent[]>([])
 
-// ==================== 世界编辑状态 ====================
-
-const showWorldEditModal = ref(false)
-const worldSaving = ref(false)
-const worldEnhancing = ref(false)
-const editingWorldName = ref('')
-const worldSettingsFormRef = ref<InstanceType<typeof WorldSettingsForm> | null>(null)
-
 // ==================== 分支编辑 / 查看状态 ====================
 
 const showBranchFormModal = ref(false)
@@ -113,46 +96,10 @@ const branchForm = reactive({
 
 const branchActionId = ref<number | null>(null)
 
-// ==================== 角色编辑 / 查看状态 ====================
-
-const showCharacterFormModal = ref(false)
-const characterModalLoading = ref(false)
-const characterSaving = ref(false)
-const characterEnhancing = ref(false)
-const editingCharacterId = ref<number | null>(null)
-const editingCharacter = ref<Character | null>(null)
-const characterFormRef = ref<InstanceType<typeof CharacterFormModal> | null>(null)
-
+// ==================== 角色查看状态 ====================
 const showCharacterDetailModal = ref(false)
 const characterDetailLoading = ref(false)
 const selectedCharacter = ref<Character | null>(null)
-
-/**
- * 世界对象本身是扁平结构，而 `WorldSettingsForm` 需要的是 settings 结构。
- * 这里把映射集中到一个函数里，避免在弹窗打开和保存时重复拼装字段。
- */
-function worldToSettings(target: World): WorldSettings {
-  return {
-    description: target.description,
-    epoch: target.epoch,
-    current_year: target.current_year,
-    core_rules: target.core_rules,
-    themes: target.themes,
-    tags: target.tags,
-    magic_system: target.magic_system,
-    tech_level: target.tech_level,
-    economy_type: target.economy_type,
-    government: target.government,
-    religion: target.religion,
-    regions: target.regions,
-    factions: target.factions,
-    major_cities: target.major_cities,
-    races: target.races,
-    nsfw_enabled: target.nsfw_enabled,
-    evolution_enabled: target.evolution_enabled,
-    metadata: target.metadata
-  }
-}
 
 function formatDateTime(value?: string | null): string {
   if (!value) return '未记录'
@@ -412,66 +359,18 @@ async function refreshAllData() {
 
 // ==================== 世界详情模块 ====================
 
-function openWorldEditModal() {
-  if (!world.value) return
-  editingWorldName.value = world.value.name
-  showWorldEditModal.value = true
-}
-
-async function handleEnhanceWorldSettings() {
-  const worldName = editingWorldName.value.trim()
-  const settings = worldSettingsFormRef.value?.getSettings() ?? {}
-
-  if (!worldName) {
-    message.warning('请先填写世界名称')
-    return
-  }
-
-  if (Object.keys(settings).length === 0) {
-    message.warning('请先填写至少一项世界设定')
-    return
-  }
-
-  worldEnhancing.value = true
-  try {
-    const response = await enhanceWorldSettingsApi({
-      world_name: worldName,
-      settings
-    })
-    worldSettingsFormRef.value?.reset(response.enhanced_settings)
-    message.success('AI 已完成世界设定优化')
-  } catch (err: any) {
-    message.error(err?.message || 'AI 优化世界设定失败')
-  } finally {
-    worldEnhancing.value = false
-  }
-}
-
-async function handleSaveWorld() {
+function openWorldEditPage() {
   if (!world.value) return
 
-  const name = editingWorldName.value.trim()
-  if (!name) {
-    message.warning('世界名称不能为空')
-    return
-  }
-
-  worldSaving.value = true
-  try {
-    const settings = worldSettingsFormRef.value?.getSettings() ?? {}
-    const updated = await updateWorldApi(world.value.id, {
-      name,
-      settings
-    })
-    world.value = updated
-    showWorldEditModal.value = false
-    message.success('世界信息已更新')
-    await Promise.allSettled([loadWorld(), loadYearbook()])
-  } catch (err: any) {
-    message.error(err?.message || '保存世界信息失败')
-  } finally {
-    worldSaving.value = false
-  }
+  /**
+   * 使用页面路由承载编辑状态，而不是继续在当前页打开弹窗。
+   * 这样可以支持直接访问编辑 URL，也方便保存后再精确返回当前详情页。
+   */
+  router.push({
+    name: 'WorldEdit',
+    params: { worldId: world.value.id },
+    query: { redirect: route.fullPath }
+  })
 }
 
 // ==================== 分支模块 ====================
@@ -529,72 +428,20 @@ async function handleSwitchBranch(branch: StoryBranch) {
 
 // ==================== 角色模块 ====================
 
-function openCreateCharacterModal() {
-  editingCharacterId.value = null
-  editingCharacter.value = null
-  characterModalLoading.value = false
-  showCharacterFormModal.value = true
+function openCreateCharacterPage() {
+  router.push({
+    name: 'CharacterCreate',
+    params: { worldId: worldId.value },
+    query: { redirect: route.fullPath }
+  })
 }
 
-async function openEditCharacterModal(characterId: number) {
-  editingCharacterId.value = characterId
-  editingCharacter.value = null
-  characterModalLoading.value = true
-  showCharacterFormModal.value = true
-
-  try {
-    editingCharacter.value = await getCharacterApi(worldId.value, characterId)
-  } catch (err: any) {
-    showCharacterFormModal.value = false
-    message.error(err?.message || '加载角色详情失败')
-  } finally {
-    characterModalLoading.value = false
-  }
-}
-
-async function handleSubmitCharacter(payload: CharacterInput) {
-  characterSaving.value = true
-  try {
-    if (editingCharacterId.value) {
-      await updateCharacterApi(worldId.value, editingCharacterId.value, payload)
-      message.success('角色已更新')
-    } else {
-      await createCharacterApi(worldId.value, payload)
-      message.success('角色已创建')
-    }
-
-    showCharacterFormModal.value = false
-    editingCharacter.value = null
-    await loadCharacters()
-  } catch (err: any) {
-    message.error(err?.message || '保存角色失败')
-  } finally {
-    characterSaving.value = false
-  }
-}
-
-async function handleEnhanceCharacter(payload: CharacterInput) {
-  characterEnhancing.value = true
-  try {
-    const response = await generateCharacterApi(payload)
-    const generatedPayload =
-      (response as any)?.enhanced_character ??
-      (response as any)?.original_character ??
-      (response as any)?.enhanced_settings ??
-      (response as any)?.original_settings ??
-      response
-
-    if (!generatedPayload || typeof generatedPayload !== 'object') {
-      throw new Error('AI 返回的角色数据格式不正确，无法回填表单')
-    }
-
-    characterFormRef.value?.applyGeneratedCharacter(generatedPayload)
-    message.success('AI 已生成并回填角色设定')
-  } catch (err: any) {
-    message.error(err?.message || 'AI 生成角色失败')
-  } finally {
-    characterEnhancing.value = false
-  }
+function openEditCharacterPage(characterId: number) {
+  router.push({
+    name: 'CharacterEdit',
+    params: { worldId: worldId.value, characterId },
+    query: { redirect: route.fullPath }
+  })
 }
 
 async function handleViewCharacter(characterId: number) {
@@ -701,12 +548,12 @@ watch(
           <div>
             <h2 class="module-title">世界详情模块</h2>
             <p class="module-desc">
-              展示世界基础设定与关键标签，并支持在同页编辑更新。
+              展示世界基础设定与关键标签，并支持跳转到独立编辑页进行更新。
             </p>
           </div>
           <NSpace>
             <NButton :loading="worldLoading" secondary @click="loadWorld">重新加载</NButton>
-            <NButton type="primary" :disabled="!world" @click="openWorldEditModal">
+            <NButton type="primary" :disabled="!world" @click="openWorldEditPage">
               <template #icon>
                 <NIcon><CreateOutline /></NIcon>
               </template>
@@ -824,7 +671,7 @@ watch(
           <div>
             <h2 class="module-title">世界线分支模块</h2>
             <p class="module-desc">
-              展示主线与支线时间线，支持查看、创建、编辑、删除与活跃分支切换。
+              展示主线与支线时间线，支持创建分支与切换活跃时间线。
             </p>
           </div>
           <NSpace>
@@ -955,12 +802,12 @@ watch(
           <div>
             <h2 class="module-title">角色管理模块</h2>
             <p class="module-desc">
-              统一管理当前世界下的角色卡片、详情查看与增删改操作。
+              统一管理当前世界下的角色卡片，并支持跳转到独立页面进行新增和编辑。
             </p>
           </div>
           <NSpace>
             <NButton :loading="characterLoading" secondary @click="loadCharacters">重新加载</NButton>
-            <NButton type="primary" @click="openCreateCharacterModal">
+            <NButton type="primary" @click="openCreateCharacterPage">
               <template #icon>
                 <NIcon><AddOutline /></NIcon>
               </template>
@@ -1028,7 +875,7 @@ watch(
                 </template>
                 故事线
               </NButton>
-              <NButton size="small" secondary @click="openEditCharacterModal(character.id)">
+              <NButton size="small" secondary @click="openEditCharacterPage(character.id)">
                 <template #icon>
                   <NIcon><CreateOutline /></NIcon>
                 </template>
@@ -1045,36 +892,6 @@ watch(
         </div>
       </section>
     </template>
-
-    <NModal
-      v-model:show="showWorldEditModal"
-      preset="card"
-      title="编辑世界信息"
-      style="max-width: 760px"
-      :mask-closable="false"
-    >
-      <NForm @submit.prevent="handleSaveWorld">
-        <NFormItem label="世界名称" required>
-          <NInput
-            v-model:value="editingWorldName"
-            placeholder="请输入世界名称"
-            :disabled="worldSaving"
-          />
-        </NFormItem>
-
-        <WorldSettingsForm
-          ref="worldSettingsFormRef"
-          :settings="world ? worldToSettings(world) : undefined"
-          :enhancing="worldEnhancing"
-          @enhance="handleEnhanceWorldSettings"
-        />
-
-        <NSpace justify="end" style="margin-top: 20px">
-          <NButton :disabled="worldSaving" @click="showWorldEditModal = false">取消</NButton>
-          <NButton type="primary" :loading="worldSaving" @click="handleSaveWorld">保存世界信息</NButton>
-        </NSpace>
-      </NForm>
-    </NModal>
 
     <NModal
       v-model:show="showBranchFormModal"
@@ -1107,18 +924,6 @@ watch(
         </NSpace>
       </NForm>
     </NModal>
-
-    <CharacterFormModal
-      ref="characterFormRef"
-      v-model:show="showCharacterFormModal"
-      :world-id="worldId"
-      :character="editingCharacter"
-      :loading="characterModalLoading"
-      :saving="characterSaving"
-      :enhancing="characterEnhancing"
-      @submit="handleSubmitCharacter"
-      @enhance="handleEnhanceCharacter"
-    />
 
     <NModal
       v-model:show="showCharacterDetailModal"

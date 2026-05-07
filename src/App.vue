@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { computed, onErrorCaptured, onMounted } from 'vue'
-import { NConfigProvider, NGlobalStyle, NMessageProvider, NDialogProvider, NSpin, darkTheme } from 'naive-ui'
+import {
+  NConfigProvider,
+  NGlobalStyle,
+  NMessageProvider,
+  NDialogProvider,
+  NSpin,
+  darkTheme,
+  zhCN,
+  dateZhCN
+} from 'naive-ui'
 import { useAppStore } from './stores/app'
 import MessageApiSetter from './components/common/MessageApiSetter.vue'
 
@@ -36,7 +45,12 @@ onErrorCaptured((err, _instance, info) => {
 </script>
 
 <template>
-  <n-config-provider :theme="theme" class="app-provider">
+  <n-config-provider
+    :theme="theme"
+    :locale="zhCN"
+    :date-locale="dateZhCN"
+    class="app-provider"
+  >
     <n-global-style />
     <n-dialog-provider>
       <n-message-provider>

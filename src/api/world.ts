@@ -45,6 +45,60 @@ function parseWorldSettings(settings?: string | WorldSettings | null): WorldSett
   }
 }
 
+/**
+ * 旧版世界观接口经常会返回“顶层字段存在，但值为空”的情况：
+ * 例如 `description: ""`、`current_year: 0`、`themes: []`，
+ * 而真实内容其实仍保存在 `settings` JSON 里。
+ *
+ * 这里不能直接用 `??`，因为空字符串、空数组、0 都会被视为“已定义”，
+ * 从而把 settings 中真正的值挡住，最终导致编辑页无法正确回填原始数据。
+ */
+function pickString(rawValue: string | undefined, settingsValue: string | undefined, fallback = ''): string {
+  if (typeof rawValue === 'string' && rawValue.trim().length > 0) {
+    return rawValue
+  }
+  if (typeof settingsValue === 'string' && settingsValue.trim().length > 0) {
+    return settingsValue
+  }
+  return fallback
+}
+
+function pickNumber(rawValue: number | undefined, settingsValue: number | undefined, fallback = 0): number {
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue) && rawValue !== 0) {
+    return rawValue
+  }
+  if (typeof settingsValue === 'number' && Number.isFinite(settingsValue)) {
+    return settingsValue
+  }
+  if (typeof rawValue === 'number' && Number.isFinite(rawValue)) {
+    return rawValue
+  }
+  return fallback
+}
+
+function pickArray<T>(rawValue: T[] | undefined, settingsValue: T[] | undefined): T[] | undefined {
+  if (Array.isArray(rawValue) && rawValue.length > 0) {
+    return rawValue
+  }
+  if (Array.isArray(settingsValue) && settingsValue.length > 0) {
+    return settingsValue
+  }
+  if (Array.isArray(rawValue)) {
+    return rawValue
+  }
+  return settingsValue
+}
+
+function pickObject<T extends Record<string, any> | undefined>(rawValue: T, settingsValue: T): T {
+  if (rawValue && typeof rawValue === 'object' && Object.keys(rawValue).length > 0) {
+    return rawValue
+  }
+  if (settingsValue && typeof settingsValue === 'object' && Object.keys(settingsValue).length > 0) {
+    return settingsValue
+  }
+  return rawValue ?? settingsValue
+}
+
 function normalizeWorld(rawWorld: RawWorld): World {
   const settings = parseWorldSettings(rawWorld.settings)
 
@@ -53,22 +107,22 @@ function normalizeWorld(rawWorld: RawWorld): World {
     user_id: Number(rawWorld.user_id ?? 0),
     name: rawWorld.name ?? '',
     slug: rawWorld.slug ?? '',
-    description: rawWorld.description ?? settings.description ?? '',
-    epoch: rawWorld.epoch ?? settings.epoch ?? '',
-    current_year: rawWorld.current_year ?? settings.current_year ?? 0,
-    core_rules: rawWorld.core_rules ?? settings.core_rules,
-    themes: rawWorld.themes ?? settings.themes,
-    tags: rawWorld.tags ?? settings.tags,
+    description: pickString(rawWorld.description, settings.description),
+    epoch: pickString(rawWorld.epoch, settings.epoch),
+    current_year: pickNumber(rawWorld.current_year, settings.current_year),
+    core_rules: pickArray(rawWorld.core_rules, settings.core_rules),
+    themes: pickArray(rawWorld.themes, settings.themes),
+    tags: pickArray(rawWorld.tags, settings.tags),
     magic_system: rawWorld.magic_system ?? settings.magic_system,
     tech_level: rawWorld.tech_level ?? settings.tech_level,
     economy_type: rawWorld.economy_type ?? settings.economy_type,
-    government: rawWorld.government ?? settings.government,
-    religion: rawWorld.religion ?? settings.religion,
-    regions: rawWorld.regions ?? settings.regions,
-    factions: rawWorld.factions ?? settings.factions,
-    major_cities: rawWorld.major_cities ?? settings.major_cities,
-    races: rawWorld.races ?? settings.races,
-    metadata: rawWorld.metadata ?? settings.metadata,
+    government: pickString(rawWorld.government, settings.government),
+    religion: pickString(rawWorld.religion, settings.religion),
+    regions: pickArray(rawWorld.regions, settings.regions),
+    factions: pickArray(rawWorld.factions, settings.factions),
+    major_cities: pickArray(rawWorld.major_cities, settings.major_cities),
+    races: pickArray(rawWorld.races, settings.races),
+    metadata: pickObject(rawWorld.metadata, settings.metadata),
     active_timeline_id: rawWorld.active_timeline_id ?? null,
     nsfw_enabled: rawWorld.nsfw_enabled ?? settings.nsfw_enabled ?? false,
     evolution_enabled: rawWorld.evolution_enabled ?? settings.evolution_enabled ?? false,

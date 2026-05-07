@@ -3,7 +3,7 @@ import { reactive, computed, watch } from 'vue'
 import {
   NInput, NSelect, NSwitch, NButton, NFormItem, NDivider, NIcon
 } from 'naive-ui'
-import { AddOutline, RemoveOutline, SparklesOutline } from '@vicons/ionicons5'
+import { AddOutline, RemoveOutline } from '@vicons/ionicons5'
 import type { WorldSettings, MagicType, TechLevel, EconomyType } from '@/types'
 
 /** 魔法体系选项 */
@@ -37,11 +37,11 @@ const ECONOMY_OPTIONS: { label: string; value: EconomyType }[] = [
 
 const props = defineProps<{
   settings?: WorldSettings
-  enhancing?: boolean
+  pageMode?: boolean
 }>()
 
 const emit = defineEmits<{
-  (e: 'enhance'): void
+  (e: 'change'): void
 }>()
 
 // ==================== 表单数据 ====================
@@ -99,6 +99,18 @@ const metadataJson = computed({
 watch(() => props.settings, (val) => {
   reset(val)
 }, { deep: true })
+
+/**
+ * 把内部表单变化同步通知给父级页面。
+ * 页面层会基于这个事件更新“未保存状态”和实时校验提示，而不需要逐个关心所有字段。
+ */
+watch(
+  formData,
+  () => {
+    emit('change')
+  },
+  { deep: true }
+)
 
 // ==================== 数组字段操作方法 ====================
 
@@ -174,28 +186,22 @@ function reset(src?: WorldSettings) {
   Object.assign(formData, createDefaultSettings(src))
 }
 
-defineExpose({ getSettings, reset })
+/**
+ * 返回一个稳定的草稿快照字符串，供页面层判断是否存在未保存修改。
+ * 这里直接基于表单原始值序列化，避免因为 `getSettings()` 会清理空值而丢失“用户正在编辑但尚未成型”的变化。
+ */
+function getDraftSnapshot(): string {
+  return JSON.stringify({
+    formData,
+    metadataJson: metadataJson.value
+  })
+}
+
+defineExpose({ getSettings, reset, getDraftSnapshot })
 </script>
 
 <template>
-  <div class="settings-form">
-    <!-- AI 优化入口 -->
-    <div class="ai-enhance-bar">
-      <span class="ai-enhance-hint">填写设定后，可让 AI 帮你润色和丰富世界观内容</span>
-      <NButton
-        size="small"
-        secondary
-        :loading="enhancing"
-        :disabled="enhancing"
-        @click="emit('enhance')"
-      >
-        <template #icon>
-          <n-icon><SparklesOutline /></n-icon>
-        </template>
-        AI 优化
-      </NButton>
-    </div>
-
+  <div class="settings-form" :class="{ 'settings-form--page': pageMode }">
     <!-- ==================== 基础设定 ==================== -->
     <NDivider title-placement="left">基础设定</NDivider>
 
@@ -574,6 +580,12 @@ defineExpose({ getSettings, reset })
   }
 }
 
+.settings-form--page {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
 .form-row {
   display: flex;
   gap: 12px;
@@ -680,27 +692,4 @@ defineExpose({ getSettings, reset })
   }
 }
 
-// ==================== AI 优化入口 ====================
-.ai-enhance-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 14px;
-  border: 1px dashed var(--color-border);
-  border-radius: var(--radius-md);
-  background: linear-gradient(135deg, rgba(180, 142, 255, 0.04), rgba(142, 180, 255, 0.04));
-  margin-bottom: 8px;
-
-  &:hover {
-    border-color: var(--color-border-hover);
-    background: linear-gradient(135deg, rgba(180, 142, 255, 0.06), rgba(142, 180, 255, 0.06));
-  }
-}
-
-.ai-enhance-hint {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  line-height: 1.5;
-}
 </style>

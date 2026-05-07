@@ -31,9 +31,36 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/worlds/new',
+      name: 'WorldCreate',
+      component: () => import('@/views/WorldEditorPage.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/worlds/:worldId',
       name: 'WorldDetail',
       component: () => import('@/views/WorldDetail.vue'),
+      props: true,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/worlds/:worldId/edit',
+      name: 'WorldEdit',
+      component: () => import('@/views/WorldEditorPage.vue'),
+      props: true,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/worlds/:worldId/characters/new',
+      name: 'CharacterCreate',
+      component: () => import('@/views/CharacterEditorPage.vue'),
+      props: true,
+      meta: { requiresAuth: true }
+    },
+    {
+      path: '/worlds/:worldId/characters/:characterId/edit',
+      name: 'CharacterEdit',
+      component: () => import('@/views/CharacterEditorPage.vue'),
       props: true,
       meta: { requiresAuth: true }
     },
