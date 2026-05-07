@@ -2,13 +2,13 @@
 
 /** 创建分支请求 */
 export interface CreateBranchReq {
-  parent_id?: number
+  parent_timeline_id: number
   choice_desc: string
 }
 
 /** 切换分支请求 */
 export interface SwitchBranchReq {
-  branch_id: number
+  timeline_id: number
 }
 
 /** 故事分支 */
@@ -24,17 +24,11 @@ export interface StoryBranch {
 }
 
 /** 分支树节点 */
-export interface BranchNode {
-  branch: StoryBranch
+export interface BranchNode extends StoryBranch {
   children: BranchNode[]
 }
 
-/** 分支树响应 */
+/** 分支树数据 */
 export interface BranchTreeData {
   roots: BranchNode[]
-}
-
-/** 切换分支响应 */
-export interface SwitchBranchResp {
-  active_timeline_id: number
 }

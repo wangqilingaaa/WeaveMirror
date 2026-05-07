@@ -195,12 +195,14 @@ async function handleEditWorld() {
 // ==================== 导航 ====================
 
 function enterWorld(worldId: number) {
-  router.push({ name: 'Stage', params: { worldId } })
+  // 进入工坊卡片时优先进入完整的世界详情页，方便在一个入口下管理设定、分支和角色。
+  router.push({ name: 'WorldDetail', params: { worldId } })
 }
 
 function openWorldBook(worldId: number, event: MouseEvent) {
   event.stopPropagation()
-  router.push({ name: 'WorldBook', params: { worldId } })
+  // 原“世界之书”按钮也统一跳到新的聚合详情页，避免用户在多个页面之间来回切换。
+  router.push({ name: 'WorldDetail', params: { worldId } })
 }
 
 function handleLogout() {
@@ -275,7 +277,7 @@ onMounted(loadWorlds)
               <template #icon>
                 <n-icon size="16"><BookOutline /></n-icon>
               </template>
-              世界之书
+              世界详情
             </NButton>
           </div>
         </div>
@@ -510,6 +512,7 @@ onMounted(loadWorlds)
   line-height: 1.7;
   color: var(--color-text-desc);
   display: -webkit-box;
+  line-clamp: 2;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;

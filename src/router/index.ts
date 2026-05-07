@@ -31,6 +31,13 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/worlds/:worldId',
+      name: 'WorldDetail',
+      component: () => import('@/views/WorldDetail.vue'),
+      props: true,
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/stage/:worldId',
       name: 'Stage',
       component: () => import('@/views/NarrativeStage.vue'),
@@ -40,7 +47,8 @@ const router = createRouter({
     {
       path: '/worldbook/:worldId',
       name: 'WorldBook',
-      component: () => import('@/views/WorldBook.vue'),
+      component: () => import('@/views/WorldDetail.vue'),
+      props: true,
       meta: { requiresAuth: true }
     },
     {

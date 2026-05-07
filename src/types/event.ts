@@ -13,9 +13,4 @@ export interface WorldEvent {
 }
 
 /** 年鉴事件列表响应 */
-export interface YearbookData {
-  events: WorldEvent[]
-  total: number
-  page: number
-  limit: number
-}
+export type YearbookData = WorldEvent[]

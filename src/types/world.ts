@@ -80,6 +80,11 @@ export interface World {
   major_cities?: string[]
   races?: string[]
   metadata?: Record<string, any>
+  /**
+   * 兼容旧版接口返回的原始 settings 字段。
+   * 某些后端响应会把完整设定序列化到这里，前端会在 API 层自动解包并回填到扁平字段。
+   */
+  settings?: string | WorldSettings | null
   active_timeline_id?: number | null
   nsfw_enabled: boolean
   evolution_enabled: boolean

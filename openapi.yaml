@@ -1,137 +1,203 @@
-openapi: "3.0.3"
+openapi: 3.0.3
 info:
-  title: WeaveMirror Server API
+  title: WeaveMirrorServer API
+  version: 2026-05-07
   description: |
-    WeaveMirror 世界观编织服务器 API
+    基于当前代码实现重新生成的 OpenAPI 文档。
 
-    ### 架构说明
-    - **鉴权方式**：JWT Bearer Token（注册/登录时获取，有效期 24 小时）
-    - **统一响应格式**：所有接口返回 `{code: 0, message: "success", data: ...}`
-      - `code: 0` 表示成功，非零表示错误
-      - `data` 字段承载具体业务数据
-    - **WebSocket**：`/api/v1/ws`，通过查询参数 `token` 鉴权
-    - **分页**：列表接口均支持 `page` 和 `limit` 查询参数，默认 `page=1, limit=10`
-  version: "1.0.0"
+    审计口径：
+    - 路由以 route 包实际注册结果为准
+    - 请求体与响应体以 handler / service / model 的真实绑定与返回结构为准
+    - 若历史文档、注释或旧测试与本文档冲突，以当前实现为准
+
+    统一约定：
+    - HTTP 成功响应：`{code: 0, message: "success", data: ...}`
+    - HTTP 失败响应：`{code: HTTP状态码, message: "错误信息"}`
+    - 受保护接口使用 `Authorization: Bearer <token>`
+    - WebSocket 握手地址：`/api/v1/worlds/{world_id}/narrative?token=<jwt>`
 servers:
   - url: http://localhost:8080
     description: 本地开发环境
-
+tags:
+  - name: 系统
+  - name: 认证
+  - name: 用户
+  - name: 世界观
+  - name: 角色
+  - name: 关系网
+  - name: 故事线
+  - name: WebSocket
 paths:
-  # ===========================================================
-  # 健康检查
-  # ===========================================================
   /health:
     get:
       tags: [系统]
       summary: 健康检查
-      description: 检测服务是否正常运行
       operationId: healthCheck
       responses:
-        "200":
-          description: 服务正常运行
+        '200':
+          description: 服务健康状态
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: ok
-                  version:
-                    type: string
-                    example: 0.1.0
+                $ref: '#/components/schemas/HealthResponse'
 
-  # ===========================================================
-  # 认证
-  # ===========================================================
   /api/v1/auth/register:
     post:
       tags: [认证]
       summary: 用户注册
-      description: 创建新用户账户并返回 JWT Token
       operationId: register
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RegisterReq"
+              $ref: '#/components/schemas/RegisterReq'
       responses:
-        "200":
-          description: 注册成功，返回用户 ID 和 Token
+        '200':
+          description: 注册成功
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/AuthResp"
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: 请求体格式错误或参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: 用户名已存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/auth/login:
     post:
       tags: [认证]
       summary: 用户登录
-      description: 使用用户名和密码登录，返回 JWT Token
       operationId: login
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/LoginReq"
+              $ref: '#/components/schemas/LoginReq'
       responses:
-        "200":
+        '200':
           description: 登录成功
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/AuthResp"
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: 请求体格式错误或参数校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 用户名或密码错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  # ===========================================================
-  # 用户
-  # ===========================================================
   /api/v1/me:
     get:
       tags: [用户]
-      summary: 获取当前用户信息
-      description: 返回当前登录用户的基本信息（需 Bearer Token）
+      summary: 获取当前用户上下文
       operationId: getCurrentUser
       security:
         - BearerAuth: []
       responses:
-        "200":
-          description: 当前用户 ID
+        '200':
+          description: 返回当前用户 ID
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          user_id:
-                            type: integer
-                            description: 用户 ID
-                            example: 1
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  # ===========================================================
-  # 世界观
-  # ===========================================================
   /api/v1/worlds:
+    get:
+      tags: [世界观]
+      summary: 获取世界观列表
+      operationId: listWorlds
+      description: |
+        分页获取当前用户的世界观列表。
+
+        注意：
+        - service 层查询默认值为 `page=1, limit=10`
+        - 若请求未显式传 `page`、`limit`，当前实现返回体中的 `page`、`limit` 可能回显 `0`
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: 页码。未传时 service 会按 1 查询，但响应体可能回显 0。
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          description: 每页数量。未传时 service 会按 10 查询，最大 100。
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: 世界观列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListWorldsResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     post:
       tags: [世界观]
       summary: 创建世界观
-      description: 创建一个新的世界观（需 Bearer Token）
       operationId: createWorld
+      description: |
+        创建新世界观。
+
+        服务端默认值：
+        - `epoch = "大陆历 1 年"`
+        - `current_year = 1`
+        - `nsfw_enabled = false`
+        - `evolution_enabled = true`
+
+        重要实现细节：
+        - 若传入了 `settings` 对象，字段会被扁平化写入世界模型
+        - `settings.evolution_enabled` 在请求中未显式传值但 `settings` 存在时，当前实现可能因 Go 零值而覆盖默认值
       security:
         - BearerAuth: []
       requestBody:
@@ -139,356 +205,341 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateWorldReq"
+              $ref: '#/components/schemas/CreateWorldReq'
       responses:
-        "200":
-          description: 创建成功，返回世界观信息
+        '200':
+          description: 创建成功
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/World"
-    get:
-      tags: [世界观]
-      summary: 获取世界观列表
-      description: 获取当前用户的所有世界观列表（分页）
-      operationId: listWorlds
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: page
-          in: query
-          schema:
-            type: integer
-            default: 1
-          description: 页码
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 10
-          description: 每页数量
-      responses:
-        "200":
-          description: 世界观列表
+                $ref: '#/components/schemas/CreateWorldResponse'
+        '400':
+          description: 请求体错误
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          worlds:
-                            type: array
-                            items:
-                              $ref: "#/components/schemas/World"
-                          total:
-                            type: integer
-                            example: 1
-                          page:
-                            type: integer
-                            example: 1
-                          limit:
-                            type: integer
-                            example: 10
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/worlds/{world_id}:
     get:
       tags: [世界观]
       summary: 获取世界观详情
-      description: 获取指定世界观的完整信息
       operationId: getWorld
       security:
         - BearerAuth: []
       parameters:
-        - name: world_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 世界观 ID
+        - $ref: '#/components/parameters/WorldID'
       responses:
-        "200":
+        '200':
           description: 世界观详情
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/World"
+                $ref: '#/components/schemas/WorldResponse'
+        '400':
+          description: world_id 格式错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权访问该世界观
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 世界观不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     put:
       tags: [世界观]
       summary: 更新世界观
-      description: 更新指定世界观的设置信息
       operationId: updateWorld
+      description: |
+        更新世界观名称或设定。
+
+        注意：
+        - `name` 只有在非空字符串时才会生效
+        - `settings` 不是安全的局部 patch，大部分字段会直接覆盖旧值
+        - 仅 `epoch != ""` 和 `current_year > 0` 时才会覆盖对应字段
       security:
         - BearerAuth: []
       parameters:
-        - name: world_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 世界观 ID
+        - $ref: '#/components/parameters/WorldID'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                  description: 世界观名称
-                  example: 新纪元
-                settings:
-                  type: string
-                  description: 世界观设定（JSON 字符串）
-                  example: '{"magic":"high","tech":"medieval"}'
+              $ref: '#/components/schemas/UpdateWorldReq'
       responses:
-        "200":
+        '200':
           description: 更新成功
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/World"
+                $ref: '#/components/schemas/WorldResponse'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权修改该世界观
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  # ===========================================================
-  # 时间推进
-  # ===========================================================
-  /api/v1/worlds/{world_id}/advance:
+  /api/v1/worlds/{world_id}/time/advance:
     post:
       tags: [世界观]
       summary: 推进世界时间
-      description: 推进世界时间指定年数。触发角色集体老化、生命周期更新、年鉴事件生成等
       operationId: advanceTime
+      description: |
+        推进世界年份，并触发：
+        - 世界年份与纪元更新
+        - 所有非死亡角色老化
+        - 阶段变化与死亡事件生成
+        - 对当前用户单播 `world_time_update` WebSocket 消息
       security:
         - BearerAuth: []
       parameters:
-        - name: world_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 世界观 ID
+        - $ref: '#/components/parameters/WorldID'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [years]
-              properties:
-                years:
-                  type: integer
-                  description: 推进的年数（需为正整数）
-                  example: 10
+              $ref: '#/components/schemas/AdvanceTimeReq'
       responses:
-        "200":
+        '200':
           description: 时间推进结果
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/WorldTimeUpdate"
+                $ref: '#/components/schemas/WorldTimeUpdateResponse'
+        '400':
+          description: world_id 或 years 非法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权推进该世界观时间
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  # ===========================================================
-  # 世界线分支
-  # ===========================================================
-  /api/v1/worlds/{world_id}/branches:
+  /api/v1/worlds/{world_id}/timeline/branch:
     post:
       tags: [世界观]
-      summary: 创建世界线分支
-      description: 在世界观中创建新的故事线分支
+      summary: 创建时间线分支
       operationId: createBranch
+      description: |
+        创建新的时间线分支。
+
+        注意：
+        - 当前请求字段名为 `parent_timeline_id`
+        - service 层支持 `0` 表示主干
+        - 但 handler 使用 `binding:"required"`，HTTP 层当前实际上要求该字段存在且非 0
       security:
         - BearerAuth: []
       parameters:
-        - name: world_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 世界观 ID
+        - $ref: '#/components/parameters/WorldID'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateBranchReq"
+              $ref: '#/components/schemas/CreateBranchReq'
       responses:
-        "200":
+        '200':
           description: 分支创建成功
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/StoryBranch"
+                $ref: '#/components/schemas/StoryBranchResponse'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /api/v1/worlds/{world_id}/timelines:
     get:
       tags: [世界观]
-      summary: 获取世界线分支树
-      description: 获取世界观的所有分支树形结构
+      summary: 获取时间线分支树
       operationId: getBranchTree
       security:
         - BearerAuth: []
       parameters:
-        - name: world_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 世界观 ID
+        - $ref: '#/components/parameters/WorldID'
       responses:
-        "200":
+        '200':
           description: 分支树
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          roots:
-                            type: array
-                            items:
-                              $ref: "#/components/schemas/BranchNode"
-                        required: [roots]
+                $ref: '#/components/schemas/BranchTreeResponse'
+        '400':
+          description: world_id 非法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/worlds/{world_id}/timelines/switch:
-    post:
+  /api/v1/worlds/{world_id}/active-timeline:
+    put:
       tags: [世界观]
-      summary: 切换活跃时间线
-      description: 切换到指定分支作为当前活跃时间线
-      operationId: switchActiveTimeline
+      summary: 切换当前活跃时间线
+      operationId: switchActiveBranch
+      description: |
+        请求字段名为 `timeline_id`。
+        成功时当前实现返回 `data: null`，不会回显 `active_timeline_id`。
       security:
         - BearerAuth: []
       parameters:
-        - name: world_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 世界观 ID
+        - $ref: '#/components/parameters/WorldID'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SwitchBranchReq"
+              $ref: '#/components/schemas/SwitchBranchReq'
       responses:
-        "200":
+        '200':
           description: 切换成功
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          active_timeline_id:
-                            type: integer
-                            description: 当前活跃的时间线 ID
-                            example: 2
-                        required: [active_timeline_id]
+                $ref: '#/components/schemas/NullSuccessResponse'
+        '400':
+          description: world_id 或 timeline_id 非法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 分支不存在或服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  # ===========================================================
-  # 年鉴
-  # ===========================================================
   /api/v1/worlds/{world_id}/yearbook:
     get:
       tags: [世界观]
-      summary: 获取世界年鉴事件
-      description: 获取世界观的历史年鉴事件列表（分页）
+      summary: 获取世界年鉴
       operationId: getYearbook
+      description: |
+        返回当前世界的年鉴事件数组。
+
+        注意：
+        - 当前实现不支持分页
+        - service 内部最多读取前 500 条记录
       security:
         - BearerAuth: []
       parameters:
-        - name: world_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 世界观 ID
-        - name: page
-          in: query
-          schema:
-            type: integer
-            default: 1
-          description: 页码
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 10
-          description: 每页数量
+        - $ref: '#/components/parameters/WorldID'
       responses:
-        "200":
+        '200':
           description: 年鉴事件列表
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          events:
-                            type: array
-                            items:
-                              $ref: "#/components/schemas/WorldEvent"
-                          total:
-                            type: integer
-                            example: 5
-                          page:
-                            type: integer
-                            example: 1
-                          limit:
-                            type: integer
-                            example: 10
-                        required: [events, total, page, limit]
+                $ref: '#/components/schemas/YearbookResponse'
+        '400':
+          description: world_id 非法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  # ===========================================================
-  # 角色
-  # ===========================================================
-  /api/v1/characters:
+  /api/v1/ai/enhance-world-settings:
     post:
-      tags: [角色]
-      summary: 创建角色
-      description: 在指定世界观中创建新角色
-      operationId: createCharacter
+      tags: [世界观]
+      summary: AI 优化世界观设定
+      operationId: aiEnhanceWorldSettings
+      description: 该接口不会写数据库，只返回 AI 优化建议。
       security:
         - BearerAuth: []
       requestBody:
@@ -496,579 +547,771 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateCharacterReq"
+              $ref: '#/components/schemas/AIEnhanceSettingsReq'
       responses:
-        "200":
-          description: 创建成功
+        '200':
+          description: AI 优化结果
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/Character"
+                $ref: '#/components/schemas/AIEnhanceSettingsResponse'
+        '400':
+          description: 请求体错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: AI 服务错误或配置缺失
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/worlds/{world_id}/characters:
     get:
       tags: [角色]
       summary: 获取角色列表
-      description: 获取指定世界观下的角色列表（分页）
       operationId: listCharacters
       security:
         - BearerAuth: []
       parameters:
-        - name: world_id
+        - $ref: '#/components/parameters/WorldID'
+        - name: state
           in: query
-          required: true
+          description: 按角色状态筛选
           schema:
-            type: integer
-          description: 世界观 ID
+            type: string
+        - name: life_stage
+          in: query
+          description: 按生命阶段筛选
+          schema:
+            type: string
         - name: page
           in: query
           schema:
             type: integer
+            minimum: 1
             default: 1
-          description: 页码
         - name: limit
           in: query
           schema:
             type: integer
+            minimum: 1
+            maximum: 100
             default: 10
-          description: 每页数量
       responses:
-        "200":
+        '200':
           description: 角色列表
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          characters:
-                            type: array
-                            items:
-                              $ref: "#/components/schemas/Character"
-                          total:
-                            type: integer
-                            example: 5
-                          page:
-                            type: integer
-                            example: 1
-                          limit:
-                            type: integer
-                            example: 10
-                        required: [characters, total, page, limit]
-
-  /api/v1/characters/{character_id}:
-    get:
-      tags: [角色]
-      summary: 获取角色详情
-      description: 获取指定角色的完整信息
-      operationId: getCharacter
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: character_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 角色 ID
-      responses:
-        "200":
-          description: 角色详情
+                $ref: '#/components/schemas/CharacterListResponse'
+        '400':
+          description: world_id 非法
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/Character"
-    put:
-      tags: [角色]
-      summary: 更新角色
-      description: 更新指定角色的信息（所有字段均为可选，仅更新提供的字段）
-      operationId: updateCharacter
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: character_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 角色 ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateCharacterReq"
-      responses:
-        "200":
-          description: 更新成功
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/Character"
-    delete:
-      tags: [角色]
-      summary: 删除角色
-      description: 删除指定角色
-      operationId: deleteCharacter
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: character_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 角色 ID
-      responses:
-        "200":
-          description: 删除成功
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权查看该世界下的角色
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          message:
-                            type: string
-                            example: 角色已删除
-                        required: [message]
-
-  /api/v1/characters/{character_id}/state:
-    put:
-      tags: [角色]
-      summary: 变更角色状态
-      description: 变更角色的生命状态（活跃/休眠/潜伏/死亡）
-      operationId: changeCharacterState
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: character_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 角色 ID
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ChangeStateReq"
-      responses:
-        "200":
-          description: 状态变更成功
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/Character"
-
-  # ===========================================================
-  # 关系
-  # ===========================================================
-  /api/v1/relationships:
+                $ref: '#/components/schemas/ErrorResponse'
     post:
-      tags: [关系]
-      summary: 创建关系
-      description: 在两个角色之间创建关系
-      operationId: createRelationship
+      tags: [角色]
+      summary: 创建角色
+      operationId: createCharacter
+      description: |
+        在指定世界观下创建角色。
+
+        服务端默认值：
+        - `state = "活跃"`
+        - `species = "人类"`（未传时）
+        - `nsfw_level = "sfw"`（未传时）
+        - `base_attributes` 六维默认均为 `50`（未传时）
+        - `life_stage` 未传时按 `age` 自动计算
+
+        注意：
+        - 仅 `name` 为业务必填
+        - `age` 为普通 `int`，未传时当前实现会按 `0` 处理
       security:
         - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorldID'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateRelationshipReq"
+              $ref: '#/components/schemas/CreateCharacterReq'
       responses:
-        "200":
+        '200':
           description: 创建成功
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/Relationship"
-
-  /api/v1/relationships/{character_id}:
-    get:
-      tags: [关系]
-      summary: 获取角色关系列表
-      description: 获取指定角色的所有关系
-      operationId: getCharacterRelations
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: character_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 角色 ID
-        - name: type
-          in: query
-          schema:
-            type: string
-          description: 按关系类型筛选（可选）
-      responses:
-        "200":
-          description: 关系列表
+                $ref: '#/components/schemas/CharacterResponse'
+        '400':
+          description: 请求体错误或业务校验失败
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          relationships:
-                            type: array
-                            items:
-                              $ref: "#/components/schemas/Relationship"
-                          total:
-                            type: integer
-                            example: 3
-                        required: [relationships, total]
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权在该世界创建角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/relationships/{rel_id}:
-    put:
-      tags: [关系]
-      summary: 更新关系
-      description: 更新指定关系的信息
-      operationId: updateRelationship
+  /api/v1/worlds/{world_id}/characters/{char_id}:
+    get:
+      tags: [角色]
+      summary: 获取角色详情
+      operationId: getCharacter
       security:
         - BearerAuth: []
       parameters:
-        - name: rel_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 关系 ID
+        - $ref: '#/components/parameters/WorldID'
+        - $ref: '#/components/parameters/CharID'
+      responses:
+        '200':
+          description: 角色详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CharacterResponse'
+        '400':
+          description: world_id 或 char_id 非法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权访问该角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 角色不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    put:
+      tags: [角色]
+      summary: 更新角色
+      operationId: updateCharacter
+      description: |
+        所有字段均可选，仅更新传入字段。
+
+        注意：
+        - 当前实现不支持修改 `name`
+        - 若更新了 `age`，服务端会重新计算并覆盖 `life_stage`
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorldID'
+        - $ref: '#/components/parameters/CharID'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                rel_type:
-                  type: string
-                  description: 关系类型
-                  example: 盟友
-                strength:
-                  type: integer
-                  description: 关系强度 (-100 ~ 100)
-                  example: 80
-                is_secret:
-                  type: boolean
-                  description: 是否秘密关系
-                  example: false
-                metadata:
-                  type: string
-                  description: 附加元数据（JSON 字符串）
-                  example: '{"since":"大陆历100年"}'
-      # OpenAPI 要求每个 operation 必须定义 responses，否则规范校验不通过。
+              $ref: '#/components/schemas/UpdateCharacterReq'
       responses:
-        "200":
+        '200':
           description: 更新成功
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/Relationship"
+                $ref: '#/components/schemas/CharacterResponse'
+        '400':
+          description: 请求体错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权修改该角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: 角色不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
     delete:
-      tags: [关系]
-      summary: 删除关系
-      description: 删除指定关系
-      operationId: deleteRelationship
+      tags: [角色]
+      summary: 删除角色
+      operationId: deleteCharacter
+      description: 当前实现只允许删除状态为 `死亡` 的角色。
       security:
         - BearerAuth: []
       parameters:
-        - name: rel_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 关系 ID
+        - $ref: '#/components/parameters/WorldID'
+        - $ref: '#/components/parameters/CharID'
       responses:
-        "200":
+        '200':
           description: 删除成功
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          message:
-                            type: string
-                            example: 关系删除成功
-                        required: [message]
-
-  /api/v1/relationships/{world_id}/map:
-    get:
-      tags: [关系]
-      summary: 获取关系图
-      description: 获取指定世界观下所有角色之间的关系图谱
-      operationId: getRelationMap
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: world_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 世界观 ID
-      responses:
-        "200":
-          description: 关系图谱
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: world_id / char_id 非法或角色状态不允许删除
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        $ref: "#/components/schemas/RelationMapData"
-
-  # ===========================================================
-  # 故事线
-  # ===========================================================
-  /api/v1/storylines/{character_id}:
-    get:
-      tags: [故事线]
-      summary: 获取角色故事线
-      description: 获取指定角色的故事线条目列表（分页）
-      operationId: getStoryline
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: character_id
-          in: path
-          required: true
-          schema:
-            type: integer
-          description: 角色 ID
-        - name: page
-          in: query
-          schema:
-            type: integer
-            default: 1
-          description: 页码
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 20
-          description: 每页数量
-      responses:
-        "200":
-          description: 故事线条目列表
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          entries:
-                            type: array
-                            items:
-                              $ref: "#/components/schemas/StorylineEntry"
-                          total:
-                            type: integer
-                            example: 10
-                          page:
-                            type: integer
-                            example: 1
-                          limit:
-                            type: integer
-                            example: 20
-                        required: [entries, total, page, limit]
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权删除该角色
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/storylines/entries/{entry_id}/pin:
+  /api/v1/worlds/{world_id}/characters/{char_id}/state:
     put:
-      tags: [故事线]
-      summary: 固定/取消固定故事线入口
-      description: 将故事线条目标记为核心记忆（固定）或取消固定
-      operationId: pinEntry
+      tags: [角色]
+      summary: 修改角色状态
+      operationId: changeCharacterState
+      description: |
+        常规状态流转：
+        - 活跃 -> 休眠 / 潜伏
+        - 休眠 -> 活跃 / 潜伏
+        - 潜伏 -> 活跃 / 休眠
+
+        特殊规则：
+        - 将角色设为 `死亡` 时必须 `force=true`
+        - 设为死亡后，当前实现会把 `death_epoch` 固定写为 `大陆历 1 年`
       security:
         - BearerAuth: []
       parameters:
-        - name: entry_id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: 故事线条目 ID（UUID）
+        - $ref: '#/components/parameters/WorldID'
+        - $ref: '#/components/parameters/CharID'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PinEntryReq"
+              $ref: '#/components/schemas/ChangeStateReq'
       responses:
-        "200":
-          description: 操作成功
+        '200':
+          description: 返回最新角色信息
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          message:
-                            type: string
-                            example: 核心记忆状态更新成功
-                        required: [message]
+                $ref: '#/components/schemas/CharacterResponse'
+        '400':
+          description: 参数错误或状态流转不允许
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权修改该角色状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  /api/v1/storylines/entries/{entry_id}:
-    delete:
-      tags: [故事线]
-      summary: 删除故事线入口
-      description: 删除指定的故事线条目
-      operationId: deleteEntry
+  /api/v1/characters/ai-generate:
+    post:
+      tags: [角色]
+      summary: AI 完善角色草稿
+      operationId: aiGenerateCharacter
+      description: |
+        接收当前角色草稿，调用 AI 进行补全与润色。
+
+        注意：
+        - 该接口不会自动创建角色
+        - 请求结构与 `CreateCharacterReq` 相同
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCharacterReq'
+      responses:
+        '200':
+          description: AI 返回优化前后对比
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIGenerateCharacterResponse'
+        '400':
+          description: 请求体格式错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: AI 配置错误或生成失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/worlds/{world_id}/relationships:
+    get:
+      tags: [关系网]
+      summary: 获取角色关系列表
+      operationId: getCharacterRelations
       security:
         - BearerAuth: []
       parameters:
-        - name: entry_id
-          in: path
+        - $ref: '#/components/parameters/WorldID'
+        - name: char_id
+          in: query
           required: true
+          description: 角色 ID
           schema:
-            type: string
-            format: uuid
-          description: 故事线条目 ID（UUID）
+            type: integer
+            minimum: 1
       responses:
-        "200":
+        '200':
+          description: 关系列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipListResponse'
+        '400':
+          description: world_id 或 char_id 非法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权查看该世界的关系
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags: [关系网]
+      summary: 创建关系
+      operationId: createRelationship
+      description: |
+        创建两名角色之间的有向关系。
+
+        注意：
+        - `source_id` 与 `target_id` 不能相同
+        - `strength` 会被截断到 `[-100, 100]`
+        - `metadata` 为空时会被替换为 `{}` 字符串
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorldID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRelationshipReq'
+      responses:
+        '200':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipResponse'
+        '400':
+          description: 参数错误或业务校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权操作该世界的关系
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/worlds/{world_id}/relationships/{rel_id}:
+    put:
+      tags: [关系网]
+      summary: 更新关系
+      operationId: updateRelationship
+      description: |
+        所有字段均可选。
+
+        注意：
+        - `strength` 可显式传 `0`
+        - `is_secret` 可显式传 `false`
+        - `metadata` 只有非空字符串时才会更新，因此当前实现无法通过空字符串清空
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorldID'
+        - $ref: '#/components/parameters/RelID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRelationshipReq'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationshipResponse'
+        '400':
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权操作该关系
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      tags: [关系网]
+      summary: 删除关系
+      operationId: deleteRelationship
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorldID'
+        - $ref: '#/components/parameters/RelID'
+      responses:
+        '200':
           description: 删除成功
           content:
             application/json:
               schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiResponse"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        properties:
-                          message:
-                            type: string
-                            example: 条目删除成功
-                        required: [message]
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: 参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权操作该关系
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
-  # ===========================================================
-  # WebSocket
-  # ===========================================================
-  /api/v1/ws:
+  /api/v1/worlds/{world_id}/relation-map:
+    get:
+      tags: [关系网]
+      summary: 获取关系图
+      operationId: getRelationMap
+      description: |
+        返回世界中的关系图数据。
+
+        注意：
+        - `nodes` 仅包含未死亡角色
+        - `edges` 仅包含两端都未死亡的关系
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/WorldID'
+      responses:
+        '200':
+          description: 关系图
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelationMapResponse'
+        '400':
+          description: world_id 非法
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权查看该世界的关系图
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: 服务端错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/storylines/{character_id}:
+    get:
+      tags: [故事线]
+      summary: 获取角色故事线
+      operationId: getStoryline
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CharacterID'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+      responses:
+        '200':
+          description: 故事线分页结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorylineResponse'
+        '400':
+          description: 角色不存在或参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权查看该角色故事线
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/storylines/entries/{entry_id}/pin:
+    put:
+      tags: [故事线]
+      summary: 固定或取消固定核心记忆
+      operationId: pinStorylineEntry
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EntryID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PinEntryReq'
+      responses:
+        '200':
+          description: 操作成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: 请求体错误或条目不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权修改该条目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/storylines/entries/{entry_id}:
+    delete:
+      tags: [故事线]
+      summary: 删除故事线条目
+      operationId: deleteStorylineEntry
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/EntryID'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: 条目不存在或参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 未认证或 token 无效
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 无权删除该条目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/worlds/{world_id}/narrative:
     get:
       tags: [WebSocket]
-      summary: WebSocket 叙事连接
+      summary: 叙事 WebSocket 握手
+      operationId: narrativeWebSocketHandshake
       description: |
-        建立 WebSocket 连接以进行实时叙事交互。
+        该接口会升级为 WebSocket 连接。
 
-        ### 鉴权方式
-        通过查询参数 `token` 传递 JWT：
-        ```
-        ws://localhost:8080/api/v1/ws?token=<jwt_token>&world_id=<world_id>
-        ```
+        握手要求：
+        - 路径参数 `world_id`
+        - 查询参数 `token`
 
-        ### 客户端发送消息
-        ```json
-        {
-          "type": "turn_submit",
-          "data": {
-            "character_id": 1,
-            "content": "向北方前进，探索未知的遗迹"
-          }
-        }
-        ```
+        当前实现说明：
+        - handler 内部校验 token 是否有效
+        - 当前握手阶段未额外校验该 world 是否属于当前用户
 
-        ### 服务端推送消息
-        | type | 说明 | payload 字段 |
-        |------|------|-------------|
-        | `narrative_stream` | 叙事流式回复（逐块） | `content: string` |
-        | `narrative_complete` | 叙事完成 | `content: string`, `entry_id: string` |
-        | `narrative_error` | 叙事错误 | `content: string` |
-        | `world_time_update` | 世界时间更新 | `data: object` |
-        | `background_event` | 背景事件触发 | `data: object` |
-      operationId: wsConnect
+        客户端主要发送消息：
+        - `{"type":"turn_submit","data":{"character_id":1,"content":"..."}}`
+        - `{"type":"ping"}`
+
+        服务端主要推送消息：
+        - `narrative_error`
+        - `narrative_stream`
+        - `narrative_complete`
+        - `world_time_update`
+        - `ripple_brief`
+        - `background_event`
       parameters:
+        - $ref: '#/components/parameters/WorldID'
         - name: token
           in: query
           required: true
+          description: JWT，供 WebSocket 握手校验使用
           schema:
             type: string
-            format: jwt
-          description: JWT 鉴权 Token
-        - name: world_id
-          in: query
-          required: true
-          schema:
-            type: integer
-          description: 世界观 ID
-      # 虽然是 WebSocket 握手接口，仍需提供 HTTP 握手阶段的响应定义以符合 OpenAPI 规范。
       responses:
-        "101":
-          description: Switching Protocols，握手成功并升级到 WebSocket
-        "400":
-          description: 参数错误（如缺少 token/world_id）
+        '101':
+          description: WebSocket 握手成功并切换协议
+        '400':
+          description: world_id 格式错误
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ApiResponse"
-        "401":
-          description: 鉴权失败（token 无效或过期）
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: token 缺失或无效
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ApiResponse"
+                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   securitySchemes:
@@ -1076,904 +1319,1408 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      # 此处包含 ":"，使用引号包裹避免被 YAML 误判为键值分隔符。
-      description: "在 HTTP Header 中传递 JWT：`Authorization: Bearer <token>`"
-
+  parameters:
+    WorldID:
+      name: world_id
+      in: path
+      required: true
+      description: 世界观 ID
+      schema:
+        type: integer
+        minimum: 1
+    CharID:
+      name: char_id
+      in: path
+      required: true
+      description: 角色 ID
+      schema:
+        type: integer
+        minimum: 1
+    CharacterID:
+      name: character_id
+      in: path
+      required: true
+      description: 角色 ID
+      schema:
+        type: integer
+        minimum: 1
+    RelID:
+      name: rel_id
+      in: path
+      required: true
+      description: 关系 ID
+      schema:
+        type: integer
+        minimum: 1
+    EntryID:
+      name: entry_id
+      in: path
+      required: true
+      description: 故事线条目 UUID
+      schema:
+        type: string
   schemas:
-    # ===========================================================
-    # 通用
-    # ===========================================================
-    ApiResponse:
+    SuccessResponse:
       type: object
-      description: 统一响应包装
+      required: [code, message, data]
       properties:
         code:
           type: integer
-          description: 状态码（0 成功，非0 错误）
           example: 0
         message:
           type: string
-          description: 状态消息
           example: success
         data:
           type: object
-          description: 业务数据（具体结构见各接口定义）
-      required: [code, message, data]
-
-    # ===========================================================
-    # 认证
-    # ===========================================================
+          additionalProperties: true
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: 请求参数错误
+    NullSuccessResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: object
+              nullable: true
+              example: null
+    HealthData:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          example: ok
+        version:
+          type: string
+          example: 0.1.0
+    HealthResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/HealthData'
     RegisterReq:
       type: object
       required: [username, password, email]
       properties:
         username:
           type: string
-          description: 用户名
           example: alice
         password:
           type: string
-          description: 密码
-          format: password
-          example: password123
+          minLength: 6
+          example: pass123456
         email:
           type: string
           format: email
-          description: 电子邮箱
           example: alice@example.com
         birth_date:
           type: string
-          description: 出生日期（可选）
-          example: "2000-01-01"
-
+          description: 生日，格式 YYYY-MM-DD
+          example: '2000-01-01'
     LoginReq:
       type: object
       required: [username, password]
       properties:
         username:
           type: string
-          description: 用户名
           example: alice
         password:
           type: string
-          description: 密码
-          format: password
-          example: password123
-
+          example: pass123456
     AuthResp:
       type: object
+      required: [user_id, token]
       properties:
         user_id:
           type: integer
-          description: 用户 ID
           example: 1
         token:
           type: string
-          description: JWT Token（有效期 24 小时）
-          example: eyJhbGciOiJIUzI1NiIs...
-      required: [user_id, token]
-
-    # ===========================================================
-    # 世界观
-    # ===========================================================
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.xxx.yyy
+    AuthResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/AuthResp'
+    MeData:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          type: integer
+          example: 1
+    MeResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/MeData'
+    Region:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: 北境
+        description:
+          type: string
+          example: 常年冰雪覆盖的边境地带
+        climate:
+          type: string
+          example: 寒冷
+        notable_places:
+          type: array
+          items:
+            type: string
+    WorldSettings:
+      type: object
+      properties:
+        description:
+          type: string
+        epoch:
+          type: string
+          example: 大陆历 1 年
+        current_year:
+          type: integer
+          minimum: 0
+          example: 1
+        core_rules:
+          type: array
+          items:
+            type: string
+        themes:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        magic_system:
+          type: string
+          description: 预设示例 none/low/high/unique，也支持自定义
+        tech_level:
+          type: string
+          description: 预设示例 stone_age/medieval/renaissance/industrial/modern/future/scifi，也支持自定义
+        economy_type:
+          type: string
+          description: 预设示例 barter/currency/resource/post_scarcity，也支持自定义
+        government:
+          type: string
+        religion:
+          type: string
+        regions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Region'
+        factions:
+          type: array
+          items:
+            type: string
+        major_cities:
+          type: array
+          items:
+            type: string
+        races:
+          type: array
+          items:
+            type: string
+        nsfw_enabled:
+          type: boolean
+        evolution_enabled:
+          type: boolean
+        metadata:
+          type: object
+          additionalProperties: true
+    World:
+      type: object
+      required: [id, user_id, name, slug, epoch, current_year, nsfw_enabled, evolution_enabled, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+          example: 1
+        user_id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: 艾泽拉斯大陆
+        slug:
+          type: string
+          example: w1-ab12cd34
+        description:
+          type: string
+        epoch:
+          type: string
+          example: 大陆历 1 年
+        current_year:
+          type: integer
+          example: 1
+        core_rules:
+          type: array
+          items:
+            type: string
+        themes:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+        magic_system:
+          type: string
+        tech_level:
+          type: string
+        economy_type:
+          type: string
+        government:
+          type: string
+        religion:
+          type: string
+        regions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Region'
+        factions:
+          type: array
+          items:
+            type: string
+        major_cities:
+          type: array
+          items:
+            type: string
+        races:
+          type: array
+          items:
+            type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        active_timeline_id:
+          type: integer
+          nullable: true
+          example: 2
+        nsfw_enabled:
+          type: boolean
+        evolution_enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     CreateWorldReq:
       type: object
       required: [name]
       properties:
         name:
           type: string
-          description: 世界观名称
           example: 艾泽拉斯大陆
         settings:
-          type: string
-          description: 世界观设定（JSON 字符串）
-          example: '{"magic":"high","tech":"medieval"}'
-        nsfw_enabled:
-          type: boolean
-          description: 是否启用 NSFW 内容
-          default: false
-          example: false
-
-    World:
+          $ref: '#/components/schemas/WorldSettings'
+    UpdateWorldReq:
       type: object
       properties:
-        id:
-          type: integer
-          description: 世界观 ID
-          example: 1
-        user_id:
-          type: integer
-          description: 所属用户 ID
-          example: 1
         name:
           type: string
-          description: 世界观名称
-          example: 艾泽拉斯大陆
-        epoch:
-          type: string
-          description: 当前纪元名称
-          example: 大陆历
-        current_year:
-          type: integer
-          description: 当前年份
-          example: 150
-        settings:
-          type: string
-          description: 世界观设定（JSON 字符串）
-          example: '{"magic":"high"}'
-        active_timeline_id:
-          type: integer
-          description: 当前活跃时间线 ID
           nullable: true
+          example: 新纪元
+        settings:
+          allOf:
+            - $ref: '#/components/schemas/WorldSettings'
+          nullable: true
+    CreateWorldData:
+      type: object
+      required: [world]
+      properties:
+        world:
+          $ref: '#/components/schemas/World'
+    CreateWorldResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/CreateWorldData'
+    ListWorldsData:
+      type: object
+      required: [worlds, total, page, limit]
+      properties:
+        worlds:
+          type: array
+          items:
+            $ref: '#/components/schemas/World'
+        total:
+          type: integer
+          format: int64
+          example: 2
+        page:
+          type: integer
+          description: 当前实现未传 page 时可能回显 0
+          example: 0
+        limit:
+          type: integer
+          description: 当前实现未传 limit 时可能回显 0
+          example: 0
+    ListWorldsResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/ListWorldsData'
+    WorldResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/World'
+    AdvanceTimeReq:
+      type: object
+      required: [years]
+      properties:
+        years:
+          type: integer
+          minimum: 1
           example: 1
-        nsfw_enabled:
-          type: boolean
-          description: 是否启用 NSFW 内容
-          example: false
-        evolution_enabled:
-          type: boolean
-          description: 是否启用演化系统
-          example: true
-        created_at:
-          type: string
-          format: date-time
-          description: 创建时间
-        updated_at:
-          type: string
-          format: date-time
-          description: 更新时间
-      required: [id, user_id, name, epoch, current_year, nsfw_enabled, evolution_enabled, created_at, updated_at]
-
-    # ===========================================================
-    # 时间推进
-    # ===========================================================
     WorldTimeUpdate:
       type: object
-      description: 时间推进结果
+      required: [world_id, new_epoch, new_year, years_advanced, aged_char_count, stage_change_count, event_count]
       properties:
         world_id:
           type: integer
-          description: 世界观 ID
           example: 1
         new_epoch:
           type: string
-          description: 新纪元名称
-          example: 大陆历
+          example: 大陆历2年
         new_year:
           type: integer
-          description: 新年份
-          example: 160
+          example: 2
         years_advanced:
           type: integer
-          description: 推进的年数
-          example: 10
+          example: 1
         aged_char_count:
           type: integer
-          description: 年龄增长的角色数量
           example: 3
         death_names:
           type: array
-          description: 因寿命终结而死亡的角色名列表
           items:
             type: string
-          example: ["老国王"]
         stage_change_count:
           type: integer
-          description: 生命周期变更的角色数量
-          example: 2
+          example: 1
         event_count:
           type: integer
-          description: 生成的事件数量
-          example: 1
-      required: [world_id, new_epoch, new_year, years_advanced, aged_char_count, stage_change_count, event_count]
-
-    # ===========================================================
-    # 世界线分支
-    # ===========================================================
+          example: 2
+    WorldTimeUpdateResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/WorldTimeUpdate'
     CreateBranchReq:
       type: object
-      required: [choice_desc]
+      required: [parent_timeline_id, choice_desc]
       properties:
-        parent_id:
+        parent_timeline_id:
           type: integer
-          description: 父分支 ID（0 表示从主干创建）
-          default: 0
-          example: 0
+          minimum: 1
+          description: 当前实现绑定 required，HTTP 层实际要求该值存在且非 0
+          example: 1
         choice_desc:
           type: string
-          description: 分支选择描述
-          example: 选择支持王室而非叛军
-
-    SwitchBranchReq:
-      type: object
-      required: [branch_id]
-      properties:
-        branch_id:
-          type: integer
-          description: 要切换到的分支 ID
-          example: 2
-
+          example: 选择调查古老遗迹
     StoryBranch:
       type: object
+      required: [id, world_id, choice_desc, created_at, updated_at]
       properties:
         id:
           type: integer
-          description: 分支 ID
           example: 1
         world_id:
           type: integer
-          description: 所属世界观 ID
           example: 1
         parent_id:
           type: integer
-          description: 父分支 ID（null 表示主干）
           nullable: true
-          example: null
+          example: 1
         choice_desc:
           type: string
-          description: 分支选择描述
-          example: 初始主干
+          example: 选择调查古老遗迹
         snapshot_id:
           type: integer
-          description: 快照 ID
           nullable: true
-        is_active:
-          type: boolean
-          description: 是否为当前活跃分支
-          example: true
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
-      required: [id, world_id, choice_desc, is_active, created_at, updated_at]
-
+    StoryBranchResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/StoryBranch'
     BranchNode:
+      allOf:
+        - $ref: '#/components/schemas/StoryBranch'
+        - type: object
+          required: [children]
+          properties:
+            children:
+              type: array
+              items:
+                $ref: '#/components/schemas/BranchNode'
+    BranchTree:
       type: object
-      description: 分支树节点
+      required: [roots]
       properties:
-        branch:
-          $ref: "#/components/schemas/StoryBranch"
-        children:
+        roots:
           type: array
-          description: 子分支列表
           items:
-            $ref: "#/components/schemas/BranchNode"
-      required: [branch, children]
-
-    # ===========================================================
-    # 年鉴事件
-    # ===========================================================
+            $ref: '#/components/schemas/BranchNode'
+    BranchTreeResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/BranchTree'
+    SwitchBranchReq:
+      type: object
+      required: [timeline_id]
+      properties:
+        timeline_id:
+          type: integer
+          minimum: 1
+          example: 2
     WorldEvent:
       type: object
+      required: [id, world_id, epoch, description, related_chars, event_type, created_at, updated_at]
       properties:
         id:
           type: integer
-          description: 事件 ID
           example: 1
         world_id:
           type: integer
-          description: 所属世界观 ID
           example: 1
         epoch:
           type: string
-          description: 事件发生的纪元
-          example: 大陆历
+          example: 大陆历2年
         description:
           type: string
-          description: 事件描述
-          example: 王国宣布进入战争状态
+          example: 角色甲从「青年期」步入「壮年期」
         related_chars:
           type: string
-          description: 相关角色 ID 列表（JSON 字符串格式）
-          example: "[1,2,3]"
+          description: JSON 字符串，而不是数组对象
+          example: '[1]'
         event_type:
           type: string
-          description: 事件类型
-          example: 战争
+          example: 阶段转换
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
-      required: [id, world_id, epoch, description, event_type, created_at, updated_at]
-
-    # ===========================================================
-    # 角色
-    # ===========================================================
-    CreateCharacterReq:
+    YearbookResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/WorldEvent'
+    AIEnhanceSettingsReq:
       type: object
-      required: [name, world_id, base_attributes]
+      required: [world_name, settings]
+      properties:
+        world_name:
+          type: string
+          example: 艾泽拉斯大陆
+        settings:
+          $ref: '#/components/schemas/WorldSettings'
+    AIEnhanceSettingsData:
+      type: object
+      required: [original_settings, enhanced_settings]
+      properties:
+        original_settings:
+          $ref: '#/components/schemas/WorldSettings'
+        enhanced_settings:
+          $ref: '#/components/schemas/WorldSettings'
+    AIEnhanceSettingsResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/AIEnhanceSettingsData'
+    BodyBuild:
+      type: object
+      properties:
+        build:
+          type: string
+        muscle_tone:
+          type: string
+        body_fat:
+          type: string
+        posture:
+          type: string
+        limbs:
+          type: string
+        additional:
+          type: object
+          additionalProperties: true
+    FacialFeatures:
+      type: object
+      properties:
+        face_shape:
+          type: string
+        facial_hair:
+          type: string
+        freckles:
+          type: boolean
+        beauty_mark:
+          type: string
+        expression:
+          type: string
+    Hair:
+      type: object
+      properties:
+        color:
+          type: string
+        length:
+          type: string
+        style:
+          type: string
+    Eyes:
+      type: object
+      properties:
+        color:
+          type: string
+        shape:
+          type: string
+        size:
+          type: string
+        pupil:
+          type: string
+    Skin:
+      type: object
+      properties:
+        complexion:
+          type: string
+        texture:
+          type: string
+        blemishes:
+          type: array
+          items:
+            type: string
+        tattoos:
+          type: array
+          items:
+            type: string
+        birthmarks:
+          type: array
+          items:
+            type: string
+    DistinguishingMark:
+      type: object
+      required: [type, location, description]
+      properties:
+        type:
+          type: string
+        location:
+          type: string
+        description:
+          type: string
+        size:
+          type: string
+        visibility:
+          type: string
+    IntimateDetails:
+      type: object
+      properties:
+        breast_size:
+          type: string
+        body_hair:
+          type: string
+        pubic_hair_style:
+          type: string
+        areola_color:
+          type: string
+        nipple_type:
+          type: string
+        hymen_status:
+          type: string
+        scars_intimate:
+          type: array
+          items:
+            type: string
+        piercings_intimate:
+          type: array
+          items:
+            type: string
+        medical_notes:
+          type: string
+    IntimacySettings:
+      type: object
+      properties:
+        libido_level:
+          type: string
+        experience_level:
+          type: string
+        turn_ons:
+          type: array
+          items:
+            type: string
+        turn_offs:
+          type: array
+          items:
+            type: string
+        boundaries:
+          type: array
+          items:
+            type: string
+        preferred_style:
+          type: array
+          items:
+            type: string
+        virility:
+          type: boolean
+          nullable: true
+    PersonalityTraits:
+      type: object
+      properties:
+        openness:
+          type: integer
+        conscientiousness:
+          type: integer
+        extraversion:
+          type: integer
+        agreeableness:
+          type: integer
+        neuroticism:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        values:
+          type: array
+          items:
+            type: string
+    EmotionalState:
+      type: object
+      required: [primary, intensity]
+      properties:
+        primary:
+          type: string
+        intensity:
+          type: integer
+        secondary:
+          type: array
+          items:
+            type: string
+        mood:
+          type: string
+        stability:
+          type: string
+    FearsWeaknesses:
+      type: object
+      properties:
+        fears:
+          type: array
+          items:
+            type: string
+        phobias:
+          type: array
+          items:
+            type: string
+        weaknesses:
+          type: array
+          items:
+            type: string
+        triggers:
+          type: array
+          items:
+            type: string
+        insecurities:
+          type: array
+          items:
+            type: string
+    MoralCompass:
+      type: object
+      properties:
+        alignment:
+          type: string
+        principles:
+          type: array
+          items:
+            type: string
+        moral_gray:
+          type: string
+        taboos:
+          type: array
+          items:
+            type: string
+        loyalty:
+          type: string
+    BaseAttributes:
+      type: object
+      properties:
+        strength:
+          type: integer
+        dexterity:
+          type: integer
+        constitution:
+          type: integer
+        intelligence:
+          type: integer
+        wisdom:
+          type: integer
+        charisma:
+          type: integer
+        extra:
+          type: object
+          additionalProperties:
+            type: integer
+    Skill:
+      type: object
       properties:
         name:
           type: string
-          description: 角色姓名
-          example: 阿尔萨斯
-        name_aliases:
-          type: string
-          description: 别名（可选）
-          example: 王子、死亡骑士
-        world_id:
+        level:
           type: integer
-          description: 所属世界观 ID
-          example: 1
+        category:
+          type: string
+        description:
+          type: string
+    ScarsConditions:
+      type: object
+      properties:
+        scars:
+          type: array
+          items:
+            type: string
+        injuries:
+          type: array
+          items:
+            type: string
+        chronic_disease:
+          type: array
+          items:
+            type: string
+        disabilities:
+          type: array
+          items:
+            type: string
+        prosthetics:
+          type: array
+          items:
+            type: string
+        mental_trauma:
+          type: array
+          items:
+            type: string
+    CharacterCommonFields:
+      type: object
+      properties:
+        sex:
+          type: string
+        name_aliases:
+          type: array
+          items:
+            type: string
         age:
           type: integer
-          description: 年龄
-          example: 25
-        gender:
+          description: 未传时当前实现会按 0 处理
+          example: 18
+        life_stage:
           type: string
-          description: 性别
-          example: 男
-        species:
-          type: string
-          description: 种族
-          example: 人类
-        body_build:
-          type: string
-          description: 体型
-          example: 健壮
-        height:
-          type: number
-          format: float
-          description: 身高（cm）
-          example: 185.0
-        facial_features:
-          type: string
-          description: 面部特征
-          example: 英俊、棱角分明
-        hair:
-          type: string
-          description: 发型发色
-          example: 金色长发
-        eyes:
-          type: string
-          description: 眼睛
-          example: 蓝色
-        skin:
-          type: string
-          description: 肤色
-          example: 白皙
-        distinguishing_marks:
-          type: string
-          description:  distinctive 标记
-          example: 左脸有疤痕
-        voice:
-          type: string
-          description: 声音特征
-          example: 低沉
-        nsfw_level:
-          type: string
-          description: NSFW 级别
-          default: sfw
-          example: sfw
-        intimate_details:
-          type: string
-          description: 亲密细节（可选）
-        intimacy_settings:
-          type: string
-          description: 亲密设置（可选）
-        core_desire:
-          type: string
-          description: 核心欲望
-          example: 拯救国家
-        personality_traits:
-          type: string
-          description: 性格特征
-          example: 勇敢、固执
-        emotional_state:
-          type: string
-          description: 情绪状态
-          example: 平静
-        fears:
-          type: string
-          description: 恐惧
-          example: 失败、背叛
-        moral_compass:
-          type: string
-          description: 道德指南
-          example: 荣誉至上
-        base_attributes:
-          type: string
-          description: 基础属性（必填，JSON 字符串）
-          example: '{"力量":15,"敏捷":10,"智力":12}'
-        skills:
-          type: string
-          description: 技能（JSON 字符串）
-          example: '{"剑术":"大师级","骑术":"专家级"}'
-        scars_conditions:
-          type: string
-          description: 伤痕与状态
-          example: 左臂旧伤
-        appearance:
-          type: string
-          description: 外貌描述
-          example: 身穿华丽铠甲的金发青年
-        backstory:
-          type: string
-          description: 背景故事
-          example: 洛丹伦王国的王子，从小接受战士训练
-        current_location:
-          type: string
-          description: 当前位置
-          example: 暴风城
         birth_epoch:
           type: string
-          description: 出生纪元
-          example: 大陆历
         death_epoch:
           type: string
-          description: 死亡纪元（可选）
-        metadata:
-          type: string
-          description: 附加元数据（JSON 字符串）
-          example: '{"source":"user_created"}'
-
-    UpdateCharacterReq:
-      type: object
-      description: 所有字段均为可选，仅更新提供的字段（指针类型）
-      properties:
-        name:
-          type: string
-          description: 角色姓名
-        name_aliases:
-          type: string
-          description: 别名
-        age:
-          type: integer
-          description: 年龄
-        gender:
-          type: string
-          description: 性别
         species:
           type: string
-          description: 种族
         body_build:
-          type: string
-          description: 体型
+          $ref: '#/components/schemas/BodyBuild'
         height:
           type: number
-          format: float
-          description: 身高（cm）
+          format: double
+          example: 170
         facial_features:
-          type: string
-          description: 面部特征
+          $ref: '#/components/schemas/FacialFeatures'
         hair:
-          type: string
-          description: 发型发色
+          $ref: '#/components/schemas/Hair'
         eyes:
-          type: string
-          description: 眼睛
+          $ref: '#/components/schemas/Eyes'
         skin:
-          type: string
-          description: 肤色
+          $ref: '#/components/schemas/Skin'
         distinguishing_marks:
-          type: string
-          description: 标记
-        voice:
-          type: string
-          description: 声音特征
+          type: array
+          items:
+            $ref: '#/components/schemas/DistinguishingMark'
         nsfw_level:
           type: string
-          description: NSFW 级别
+          description: sfw / mild / nsfw
         intimate_details:
-          type: string
-          description: 亲密细节
+          $ref: '#/components/schemas/IntimateDetails'
         intimacy_settings:
-          type: string
-          description: 亲密设置
+          $ref: '#/components/schemas/IntimacySettings'
         core_desire:
           type: string
-          description: 核心欲望
         personality_traits:
-          type: string
-          description: 性格特征
+          $ref: '#/components/schemas/PersonalityTraits'
         emotional_state:
-          type: string
-          description: 情绪状态
+          $ref: '#/components/schemas/EmotionalState'
         fears:
-          type: string
-          description: 恐惧
+          $ref: '#/components/schemas/FearsWeaknesses'
         moral_compass:
-          type: string
-          description: 道德指南
+          $ref: '#/components/schemas/MoralCompass'
         base_attributes:
-          type: string
-          description: 基础属性（JSON 字符串）
+          $ref: '#/components/schemas/BaseAttributes'
         skills:
-          type: string
-          description: 技能（JSON 字符串）
+          type: array
+          items:
+            $ref: '#/components/schemas/Skill'
         scars_conditions:
-          type: string
-          description: 伤痕与状态
+          $ref: '#/components/schemas/ScarsConditions'
         appearance:
           type: string
-          description: 外貌描述
         backstory:
           type: string
-          description: 背景故事
         current_location:
           type: string
-          description: 当前位置
         metadata:
-          type: string
-          description: 附加元数据（JSON 字符串）
-
+          type: object
+          additionalProperties: true
+    CreateCharacterReq:
+      allOf:
+        - $ref: '#/components/schemas/CharacterCommonFields'
+        - type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+              example: 阿尔萨斯
+    UpdateCharacterReq:
+      $ref: '#/components/schemas/CharacterCommonFields'
     Character:
       type: object
+      required: [id, world_id, name, age, state, base_attributes, created_at, updated_at]
       properties:
         id:
           type: integer
-          description: 角色 ID
           example: 1
         world_id:
           type: integer
-          description: 所属世界观 ID
-          example: 1
-        user_id:
-          type: integer
-          description: 创建者用户 ID
           example: 1
         name:
           type: string
-          description: 角色姓名
           example: 阿尔萨斯
-        name_aliases:
+        sex:
           type: string
-          description: 别名
+        name_aliases:
+          type: array
+          items:
+            type: string
         age:
           type: integer
-          description: 年龄
-          example: 25
-        gender:
-          type: string
-          description: 性别
-          example: 男
-        species:
-          type: string
-          description: 种族
-          example: 人类
-        body_build:
-          type: string
-          description: 体型
-        height:
-          type: number
-          format: float
-          description: 身高（cm）
-        facial_features:
-          type: string
-          description: 面部特征
-        hair:
-          type: string
-          description: 发型发色
-        eyes:
-          type: string
-          description: 眼睛
-        skin:
-          type: string
-          description: 肤色
-        distinguishing_marks:
-          type: string
-          description: 标记
-        voice:
-          type: string
-          description: 声音特征
-        nsfw_level:
-          type: string
-          description: NSFW 级别
-          example: sfw
-        intimate_details:
-          type: string
-          description: 亲密细节
-        intimacy_settings:
-          type: string
-          description: 亲密设置
-        core_desire:
-          type: string
-          description: 核心欲望
-        personality_traits:
-          type: string
-          description: 性格特征
-        emotional_state:
-          type: string
-          description: 情绪状态
-        fears:
-          type: string
-          description: 恐惧
-        moral_compass:
-          type: string
-          description: 道德指南
-        base_attributes:
-          type: string
-          description: 基础属性（JSON 字符串）
-        skills:
-          type: string
-          description: 技能（JSON 字符串）
-        scars_conditions:
-          type: string
-          description: 伤痕与状态
-        appearance:
-          type: string
-          description: 外貌描述
-        backstory:
-          type: string
-          description: 背景故事
-        current_location:
-          type: string
-          description: 当前位置
-        birth_epoch:
-          type: string
-          description: 出生纪元
-        death_epoch:
-          type: string
-          description: 死亡纪元
-        state:
-          type: string
-          description: 当前状态（活跃/休眠/潜伏/死亡）
-          example: 活跃
+          example: 18
         life_stage:
           type: string
-          description: 生命周期阶段（幼年期/青年期/壮年期/中年期/老年期/暮年期）
           example: 青年期
-        birth_year:
-          type: integer
-          description: 出生年份
-        death_year:
-          type: integer
-          description: 死亡年份
-          nullable: true
-        metadata:
+        state:
           type: string
-          description: 附加元数据（JSON 字符串）
+          enum: [活跃, 休眠, 潜伏, 死亡]
+          example: 活跃
+        birth_epoch:
+          type: string
+        death_epoch:
+          type: string
+        species:
+          type: string
+          example: 人类
+        body_build:
+          $ref: '#/components/schemas/BodyBuild'
+        height:
+          type: number
+          format: double
+        facial_features:
+          $ref: '#/components/schemas/FacialFeatures'
+        hair:
+          $ref: '#/components/schemas/Hair'
+        eyes:
+          $ref: '#/components/schemas/Eyes'
+        skin:
+          $ref: '#/components/schemas/Skin'
+        distinguishing_marks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DistinguishingMark'
+        nsfw_level:
+          type: string
+          example: sfw
+        intimate_details:
+          $ref: '#/components/schemas/IntimateDetails'
+        intimacy_settings:
+          $ref: '#/components/schemas/IntimacySettings'
+        core_desire:
+          type: string
+        personality_traits:
+          $ref: '#/components/schemas/PersonalityTraits'
+        emotional_state:
+          $ref: '#/components/schemas/EmotionalState'
+        fears:
+          $ref: '#/components/schemas/FearsWeaknesses'
+        moral_compass:
+          $ref: '#/components/schemas/MoralCompass'
+        base_attributes:
+          $ref: '#/components/schemas/BaseAttributes'
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/Skill'
+        scars_conditions:
+          $ref: '#/components/schemas/ScarsConditions'
+        appearance:
+          type: string
+        backstory:
+          type: string
+        current_location:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
-      required: [id, world_id, user_id, name, age, nsfw_level, state, life_stage, created_at, updated_at]
-
+    CharacterListData:
+      type: object
+      required: [characters, total, page, limit]
+      properties:
+        characters:
+          type: array
+          items:
+            $ref: '#/components/schemas/Character'
+        total:
+          type: integer
+          format: int64
+          example: 2
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 10
+    CharacterResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Character'
+    CharacterListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/CharacterListData'
     ChangeStateReq:
       type: object
       required: [new_state]
       properties:
         new_state:
           type: string
-          description: 目标状态（活跃/休眠/潜伏/死亡）
           example: 死亡
         force:
           type: boolean
-          description: 是否强制变更（跳过状态流转规则校验）
           default: false
-          example: true
-
-    # ===========================================================
-    # 关系
-    # ===========================================================
-    CreateRelationshipReq:
+    AIGenerateCharacterData:
       type: object
-      required: [source_id, target_id, rel_type]
+      required: [original_character, enhanced_character]
       properties:
-        source_id:
-          type: integer
-          description: 源角色 ID
-          example: 1
-        target_id:
-          type: integer
-          description: 目标角色 ID
-          example: 2
-        rel_type:
-          type: string
-          description: 关系类型
-          example: 爱慕
-        strength:
-          type: integer
-          description: 关系强度（-100 ~ 100）
-          default: 0
-          example: 80
-        is_secret:
-          type: boolean
-          description: 是否秘密关系
-          default: false
-          example: false
-        metadata:
-          type: string
-          description: 附加元数据（JSON 字符串，可选）
-          example: '{"since":"大陆历100年"}'
-
+        original_character:
+          $ref: '#/components/schemas/CreateCharacterReq'
+        enhanced_character:
+          $ref: '#/components/schemas/CreateCharacterReq'
+    AIGenerateCharacterResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/AIGenerateCharacterData'
     Relationship:
       type: object
+      required: [id, world_id, source_id, target_id, rel_type, strength, is_secret, created_at, updated_at]
       properties:
         id:
           type: integer
-          description: 关系 ID
           example: 1
         world_id:
           type: integer
-          description: 所属世界观 ID
           example: 1
         source_id:
           type: integer
-          description: 源角色 ID
           example: 1
         target_id:
           type: integer
-          description: 目标角色 ID
           example: 2
         rel_type:
           type: string
-          description: 关系类型
-          example: 爱慕
+          example: 盟友
         strength:
           type: integer
-          description: 关系强度
-          example: 80
+          description: 实际存储前会被截断到 [-100, 100]
+          example: 60
         is_secret:
           type: boolean
-          description: 是否秘密关系
           example: false
         metadata:
           type: string
-          description: 附加元数据（JSON 字符串）
+          description: JSON 字符串
+          example: '{"reason":"integration test"}'
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
-      required: [id, world_id, source_id, target_id, rel_type, strength, is_secret, created_at, updated_at]
-
+    CreateRelationshipReq:
+      type: object
+      required: [source_id, target_id, rel_type]
+      properties:
+        source_id:
+          type: integer
+          minimum: 1
+          example: 1
+        target_id:
+          type: integer
+          minimum: 1
+          example: 2
+        rel_type:
+          type: string
+          example: 盟友
+        strength:
+          type: integer
+          example: 60
+        is_secret:
+          type: boolean
+          default: false
+        metadata:
+          type: string
+          description: JSON 字符串；留空时会被服务端替换为 `{}`
+          example: '{"reason":"integration test"}'
+    UpdateRelationshipReq:
+      type: object
+      properties:
+        rel_type:
+          type: string
+          nullable: true
+        strength:
+          type: integer
+          nullable: true
+          description: 可显式传 0，最终仍会被截断到 [-100, 100]
+        is_secret:
+          type: boolean
+          nullable: true
+          description: 可显式传 false
+        metadata:
+          type: string
+          nullable: true
+          description: 仅非空字符串时更新
+    RelationshipResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Relationship'
+    RelationshipListResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Relationship'
+    GraphNode:
+      type: object
+      required: [id, name, state]
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: 角色甲
+        state:
+          type: string
+          example: 活跃
+    GraphEdge:
+      type: object
+      required: [source_id, target_id, rel_type, strength, is_secret]
+      properties:
+        source_id:
+          type: integer
+          example: 1
+        target_id:
+          type: integer
+          example: 2
+        rel_type:
+          type: string
+          example: 盟友
+        strength:
+          type: integer
+          example: 60
+        is_secret:
+          type: boolean
+          example: false
     RelationMapData:
       type: object
-      description: 关系图谱数据
+      required: [nodes, edges]
       properties:
         nodes:
           type: array
-          description: 图谱节点列表（角色）
           items:
-            type: object
-            properties:
-              id:
-                type: integer
-                example: 1
-              name:
-                type: string
-                example: 阿尔萨斯
-              state:
-                type: string
-                description: 角色当前状态
-                example: 活跃
-            required: [id, name, state]
+            $ref: '#/components/schemas/GraphNode'
         edges:
           type: array
-          description: 图谱边列表（角色间关系）
           items:
-            type: object
-            properties:
-              source_id:
-                type: integer
-                description: 源角色 ID
-                example: 1
-              target_id:
-                type: integer
-                description: 目标角色 ID
-                example: 2
-              rel_type:
-                type: string
-                description: 关系类型
-                example: 爱慕
-              strength:
-                type: integer
-                description: 关系强度
-                example: 80
-              is_secret:
-                type: boolean
-                description: 是否秘密关系
-                example: false
-            required: [source_id, target_id, rel_type, strength, is_secret]
-      required: [nodes, edges]
-
-    # ===========================================================
-    # 故事线
-    # ===========================================================
+            $ref: '#/components/schemas/GraphEdge'
+    RelationMapResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/RelationMapData'
     StorylineEntry:
       type: object
+      required: [id, timestamp, location, summary, tags, emotion_tag, is_core_memory, related_character_ids, created_at]
       properties:
         id:
           type: string
-          format: uuid
-          description: 条目唯一标识（UUID）
-          example: a1b2c3d4-e5f6-...
+          example: 550e8400-e29b-41d4-a716-446655440000
         timestamp:
           type: string
-          description: 世界纪元字符串
           example: 大陆历 150 年 春季
         location:
           type: string
-          description: 故事发生位置
-          example: 暴风城
+          example: 王都城门
         summary:
           type: string
-          description: 事件摘要描述
-          example: 参加了王位继承会议
+          example: 角色在城门与守卫发生对话
         tags:
           type: array
-          description: 标签列表
           items:
             type: string
-          example: [政治, 王位]
         emotion_tag:
           type: string
-          description: 情绪标签
-          example: 喜悦
+          example: 平静
         is_core_memory:
           type: boolean
-          description: 是否为核心记忆（固定，不被压缩）
-          default: false
+          example: false
         related_character_ids:
           type: array
-          description: 相关角色 ID 列表
           items:
             type: integer
-          example: [2, 3]
         created_at:
           type: string
           format: date-time
-      required: [id, timestamp, summary, is_core_memory, created_at]
-
+    StorylineData:
+      type: object
+      required: [entries, total, page, limit]
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/StorylineEntry'
+        total:
+          type: integer
+          format: int64
+          example: 1
+        page:
+          type: integer
+          example: 1
+        limit:
+          type: integer
+          example: 20
+    StorylineResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/StorylineData'
     PinEntryReq:
       type: object
       required: [is_core_memory]
       properties:
         is_core_memory:
           type: boolean
-          description: true 固定为核心记忆，false 取消固定
           example: true
-
-    # ===========================================================
-    # WebSocket 消息格式
-    # ===========================================================
-    WSClientMessage:
+    MessageData:
       type: object
-      description: 客户端发送给服务端的 WebSocket 消息
-      required: [type, data]
+      required: [message]
+      properties:
+        message:
+          type: string
+          example: 操作成功
+    MessageResponse:
+      allOf:
+        - $ref: '#/components/schemas/SuccessResponse'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/MessageData'
+    TurnSubmitData:
+      type: object
+      required: [character_id, content]
+      properties:
+        character_id:
+          type: integer
+          example: 1
+        content:
+          type: string
+          example: 我尝试与守卫交谈。
+    WebSocketMessage:
+      type: object
+      required: [type]
       properties:
         type:
           type: string
-          enum: [turn_submit]
-          description: 消息类型
           example: turn_submit
         data:
           type: object
-          required: [character_id, content]
-          properties:
-            character_id:
-              type: integer
-              description: 要操控的角色 ID
-              example: 1
-            content:
-              type: string
-              description: 用户输入的叙事指令
-              example: 向北方前进，探索未知的遗迹
-
-    WSServerMessage:
+          additionalProperties: true
+    NarrativeErrorEvent:
       type: object
-      description: 服务端推送给客户端的 WebSocket 消息
+      required: [type, content]
       properties:
         type:
           type: string
-          enum: [narrative_stream, narrative_complete, narrative_error, world_time_update, background_event]
-          description: 服务端推送消息类型
+          example: narrative_error
+        content:
+          type: string
+          example: 输入内容不能为空
+    NarrativeStreamEvent:
+      type: object
+      required: [type, content]
+      properties:
+        type:
+          type: string
           example: narrative_stream
         content:
           type: string
-          description: 消息内容（narrative_stream / narrative_complete / narrative_error 时携带）
+    NarrativeCompleteEvent:
+      type: object
+      required: [type, full_text, suggestions, entry_id]
+      properties:
+        type:
+          type: string
+          example: narrative_complete
+        full_text:
+          type: string
+        suggestions:
+          type: array
+          items:
+            type: string
         entry_id:
           type: string
-          format: uuid
-          description: 故事线条目 ID（narrative_complete 时携带）
-        data:
-          type: object
-          description: 附加数据（world_time_update / background_event 时携带）
+        ripple_preview:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    WorldTimeUpdateEvent:
+      allOf:
+        - $ref: '#/components/schemas/WorldTimeUpdate'
+        - type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              example: world_time_update
+    RippleBriefEffect:
+      type: object
+      required: [character_id, character_name, change_desc, delta]
+      properties:
+        character_id:
+          type: integer
+        character_name:
+          type: string
+        change_desc:
+          type: string
+        delta:
+          type: integer
+    RippleBriefEvent:
+      type: object
+      required: [type, effects, rumor_text, trigger_time]
+      properties:
+        type:
+          type: string
+          example: ripple_brief
+        effects:
+          type: array
+          items:
+            $ref: '#/components/schemas/RippleBriefEffect'
+        rumor_text:
+          type: string
+        trigger_time:
+          type: string
+    BackgroundEventNotification:
+      type: object
+      required: [type, event_id, event_type, potential_type, participants, summary, effects, timestamp]
+      properties:
+        type:
+          type: string
+          example: background_event
+        event_id:
+          type: string
+        event_type:
+          type: string
+        potential_type:
+          type: string
+        participants:
+          type: array
+          items:
+            type: integer
+        summary:
+          type: string
+        effects:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
