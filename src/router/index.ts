@@ -27,32 +27,32 @@ const router = createRouter({
     {
       path: '/workshop',
       name: 'Workshop',
-      component: () => import('@/views/CreationWorkshopView.vue'),
+      component: () => import('@/views/CreationWorkshop.vue'),
       meta: { requiresAuth: true }
     },
     {
       path: '/stage/:worldId',
       name: 'Stage',
-      component: () => import('@/views/NarrativeStageView.vue'),
+      component: () => import('@/views/NarrativeStage.vue'),
       props: true,
       meta: { requiresAuth: true }
     },
     {
       path: '/worldbook/:worldId',
       name: 'WorldBook',
-      component: () => import('@/views/WorldBookView.vue'),
+      component: () => import('@/views/WorldBook.vue'),
       meta: { requiresAuth: true }
     },
     {
       path: '/storyline/:characterId',
       name: 'Storyline',
-      component: () => import('@/views/PersonalEpicView.vue'),
+      component: () => import('@/views/PersonalEpic.vue'),
       meta: { requiresAuth: true }
     },
     {
       path: '/console/:worldId',
       name: 'Console',
-      component: () => import('@/views/SystemConsoleView.vue'),
+      component: () => import('@/views/SystemConsole.vue'),
       meta: { requiresAuth: true }
     },
     {
