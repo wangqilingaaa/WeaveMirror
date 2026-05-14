@@ -38,7 +38,7 @@ function goToWorkshop() {
 }
 
 function goToStoryline(characterId: number) {
-  router.push({ name: 'Storyline', params: { characterId } })
+  router.push({ name: 'Storyline', params: { worldId: worldId.value, characterId } })
 }
 
 async function loadCharacters() {

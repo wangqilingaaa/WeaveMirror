@@ -6,16 +6,19 @@ import {
   NAlert,
   NButton,
   NCard,
+  NDivider,
   NEmpty,
   NForm,
   NFormItem,
   NIcon,
   NInput,
+  NInputNumber,
   NModal,
   NSelect,
   NSpace,
   NSpin,
   NStatistic,
+  NSwitch,
   NTag,
   useDialog,
   useMessage
@@ -32,9 +35,11 @@ import {
 } from '@vicons/ionicons5'
 import {
   createBranchApi,
+  createRelationshipApi,
   deleteCharacterApi,
   getBranchTreeApi,
   getCharacterApi,
+  getCharacterRelationsApi,
   getWorldApi,
   getYearbookApi,
   listCharactersApi,
@@ -43,7 +48,9 @@ import {
 import type {
   BranchNode,
   Character,
+  CreateRelationshipReq,
   CreateBranchReq,
+  Relationship,
   StoryBranch,
   World,
   WorldEvent
@@ -101,6 +108,33 @@ const showCharacterDetailModal = ref(false)
 const characterDetailLoading = ref(false)
 const selectedCharacter = ref<Character | null>(null)
 
+// ==================== 人物关系绑定状态 ====================
+/**
+ * 关系创建使用独立弹窗承载。
+ * 这样可以把“选择角色 + 查看已有关系 + 提交绑定”集中在一个地方，
+ * 避免用户在角色详情、故事线页和世界详情页之间频繁跳转。
+ */
+const showRelationModal = ref(false)
+const relationSaving = ref(false)
+const relationListLoading = ref(false)
+const relationError = ref('')
+const relationContextCharacter = ref<Character | null>(null)
+const relationList = ref<Relationship[]>([])
+
+/**
+ * 表单字段严格对齐 openapi 文档中的创建关系接口。
+ * `metadata` 在接口里是字符串，因此这里也保持文本态，
+ * 提交前再做 JSON 合法性校验，避免把半成品内容直接送给后端。
+ */
+const relationForm = reactive({
+  sourceId: null as number | null,
+  targetId: null as number | null,
+  relType: '',
+  strength: 0,
+  isSecret: false,
+  metadata: ''
+})
+
 function formatDateTime(value?: string | null): string {
   if (!value) return '未记录'
   const time = dayjs(value)
@@ -124,6 +158,10 @@ function formatJson(value: unknown): string {
 
 function isValidWorldId(id: number): boolean {
   return Number.isInteger(id) && id > 0
+}
+
+function isValidCharacterId(id: number | null | undefined): id is number {
+  return Number.isInteger(id) && Number(id) > 0
 }
 
 /**
@@ -247,6 +285,44 @@ const characterPreviewCards = computed(() => {
   }))
 })
 
+/**
+ * 关系表单中的角色选项统一复用世界详情页已经加载好的角色列表。
+ * 这样可以避免为简单选择器额外请求接口，也能保证下拉内容和当前页面一致。
+ */
+const relationCharacterOptions = computed(() => {
+  return characters.value.map((character) => ({
+    label: `${character.name}${character.state ? `（${character.state}）` : ''}`,
+    value: character.id
+  }))
+})
+
+const relationTargetOptions = computed(() => {
+  return relationCharacterOptions.value.filter((item) => item.value !== relationForm.sourceId)
+})
+
+const relationSourceName = computed(() => {
+  if (!isValidCharacterId(relationForm.sourceId)) return '未选择'
+  return characters.value.find((item) => item.id === relationForm.sourceId)?.name || `角色 #${relationForm.sourceId}`
+})
+
+const relationSummaryCards = computed(() => {
+  return relationList.value.map((relationship) => {
+    const isSource = relationship.source_id === relationForm.sourceId
+    const counterpartId = isSource ? relationship.target_id : relationship.source_id
+    const counterpart = characters.value.find((item) => item.id === counterpartId)
+
+    return {
+      id: relationship.id,
+      counterpartName: counterpart?.name || `角色 #${counterpartId}`,
+      directionText: isSource ? '当前角色 -> 对方' : '对方 -> 当前角色',
+      relType: relationship.rel_type || '未命名关系',
+      strength: relationship.strength ?? 0,
+      isSecret: relationship.is_secret,
+      updatedAt: relationship.updated_at || relationship.created_at || '未记录'
+    }
+  })
+})
+
 function openWorkshop() {
   router.push({ name: 'Workshop' })
 }
@@ -260,7 +336,16 @@ function openConsole() {
 }
 
 function openStoryline(characterId: number) {
-  router.push({ name: 'Storyline', params: { characterId } })
+  router.push({ name: 'Storyline', params: { worldId: worldId.value, characterId } })
+}
+
+function formatRelationshipStrength(value: number): string {
+  if (value >= 70) return `强关联（${value}）`
+  if (value >= 30) return `中等关联（${value}）`
+  if (value >= 0) return `弱关联（${value}）`
+  if (value <= -70) return `强冲突（${value}）`
+  if (value <= -30) return `中等冲突（${value}）`
+  return `轻微冲突（${value}）`
 }
 
 // ==================== 数据加载 ====================
@@ -428,6 +513,124 @@ async function handleSwitchBranch(branch: StoryBranch) {
 
 // ==================== 角色模块 ====================
 
+/**
+ * 每次打开关系弹窗都重置成“从当前点击的角色发起绑定”。
+ * 这样最符合用户在角色卡片上点击“绑定关系”的直觉，也能减少一次下拉选择。
+ */
+function resetRelationForm(sourceId: number | null = null) {
+  relationForm.sourceId = sourceId
+  relationForm.targetId = null
+  relationForm.relType = ''
+  relationForm.strength = 0
+  relationForm.isSecret = false
+  relationForm.metadata = ''
+}
+
+function getCharacterNameById(characterId: number): string {
+  return characters.value.find((item) => item.id === characterId)?.name || `角色 #${characterId}`
+}
+
+async function loadCharacterRelationsForForm() {
+  if (!isValidWorldId(worldId.value) || !isValidCharacterId(relationForm.sourceId)) {
+    relationList.value = []
+    relationError.value = ''
+    return
+  }
+
+  relationListLoading.value = true
+  relationError.value = ''
+  try {
+    const data = await getCharacterRelationsApi(worldId.value, relationForm.sourceId)
+    relationList.value = data.relationships ?? []
+  } catch (err: any) {
+    relationError.value = err?.message || '加载人物关系列表失败'
+    relationList.value = []
+  } finally {
+    relationListLoading.value = false
+  }
+}
+
+function openRelationModal(character: Character) {
+  relationContextCharacter.value = character
+  resetRelationForm(character.id)
+  relationList.value = []
+  relationError.value = ''
+  showRelationModal.value = true
+}
+
+async function handleSubmitRelation() {
+  const relType = relationForm.relType.trim()
+  const metadataText = relationForm.metadata.trim()
+
+  if (!isValidCharacterId(relationForm.sourceId)) {
+    message.warning('请先选择关系发起角色')
+    return
+  }
+
+  if (!isValidCharacterId(relationForm.targetId)) {
+    message.warning('请先选择关系目标角色')
+    return
+  }
+
+  if (relationForm.sourceId === relationForm.targetId) {
+    message.warning('关系双方不能是同一个角色')
+    return
+  }
+
+  if (!relType) {
+    message.warning('请填写关系类型，例如师徒、盟友、宿敌')
+    return
+  }
+
+  /**
+   * 后端接口要求 `metadata` 是字符串。
+   * 为了避免用户误把普通文本当成 JSON，这里显式校验：
+   * - 留空时按文档语义交给后端默认转成 `{}`
+   * - 非空时必须是合法 JSON 字符串
+   */
+  let normalizedMetadata = '{}'
+  if (metadataText) {
+    try {
+      JSON.parse(metadataText)
+      normalizedMetadata = metadataText
+    } catch {
+      message.warning('扩展信息必须是合法 JSON，例如 {"scene":"学院"}')
+      return
+    }
+  }
+
+  relationSaving.value = true
+  try {
+    const payload: CreateRelationshipReq = {
+      source_id: relationForm.sourceId,
+      target_id: relationForm.targetId,
+      rel_type: relType,
+      strength: Math.max(-100, Math.min(100, relationForm.strength)),
+      is_secret: relationForm.isSecret,
+      metadata: normalizedMetadata
+    }
+
+    await createRelationshipApi(worldId.value, payload)
+    message.success(`已为「${getCharacterNameById(payload.source_id)}」绑定新关系`)
+
+    /**
+     * 成功后保留当前 source，方便用户连续录入同一角色和多名角色之间的关系。
+     * 同时清空目标与关系描述，避免误提交重复数据。
+     */
+    relationForm.targetId = null
+    relationForm.relType = ''
+    relationForm.strength = 0
+    relationForm.isSecret = false
+    relationForm.metadata = ''
+
+    await loadCharacterRelationsForForm()
+  } catch (err: any) {
+    message.error(err?.message || '绑定人物关系失败')
+  } finally {
+    relationSaving.value = false
+  }
+}
+
 function openCreateCharacterPage() {
   router.push({
     name: 'CharacterCreate',
@@ -481,6 +684,30 @@ function handleDeleteCharacter(character: Character) {
 }
 
 // ==================== 监听路由变化 ====================
+
+watch(
+  () => [showRelationModal.value, relationForm.sourceId] as const,
+  ([visible, sourceId], [prevVisible, prevSourceId]) => {
+    /**
+     * 只有在关系弹窗可见时才刷新列表。
+     * 这样既能保证“切换发起角色后右侧列表立即同步”，
+     * 也能避免页面初始化阶段因为默认空值触发无意义请求。
+     */
+    if (!visible) return
+
+    const sourceChanged = sourceId !== prevSourceId
+    const dialogJustOpened = visible !== prevVisible
+
+    if ((sourceChanged || dialogJustOpened) && isValidCharacterId(sourceId)) {
+      void loadCharacterRelationsForForm()
+    }
+
+    if ((sourceChanged || dialogJustOpened) && !isValidCharacterId(sourceId)) {
+      relationList.value = []
+      relationError.value = ''
+    }
+  }
+)
 
 watch(
   () => worldId.value,
@@ -875,6 +1102,12 @@ watch(
                 </template>
                 故事线
               </NButton>
+              <NButton size="small" secondary @click="openRelationModal(character)">
+                <template #icon>
+                  <NIcon><SwapHorizontalOutline /></NIcon>
+                </template>
+                绑定关系
+              </NButton>
               <NButton size="small" secondary @click="openEditCharacterPage(character.id)">
                 <template #icon>
                   <NIcon><CreateOutline /></NIcon>
@@ -973,6 +1206,14 @@ watch(
               <h3 class="modal-section__title">背景故事</h3>
               <p class="long-text">{{ selectedCharacter.backstory || '暂无背景故事。' }}</p>
             </div>
+            <div class="modal-section">
+              <NButton secondary @click="openRelationModal(selectedCharacter)">
+                <template #icon>
+                  <NIcon><SwapHorizontalOutline /></NIcon>
+                </template>
+                为该角色绑定关系
+              </NButton>
+            </div>
           </NCard>
 
           <NCard class="detail-card">
@@ -1006,6 +1247,152 @@ watch(
           </NCard>
         </div>
       </template>
+    </NModal>
+
+    <NModal
+      v-model:show="showRelationModal"
+      preset="card"
+      title="绑定人物关系"
+      style="max-width: 920px"
+      :mask-closable="false"
+    >
+      <div class="relation-modal-intro">
+        <div>
+          <h3 class="relation-modal-intro__title">
+            当前入口角色：{{ relationContextCharacter?.name || relationSourceName }}
+          </h3>
+          <p class="relation-modal-intro__desc">
+            该功能直接调用接口文档中的创建关系接口，为两名角色建立有向关系。若需要表达反向含义，请切换发起角色后重新绑定。
+          </p>
+        </div>
+        <NButton secondary :loading="relationListLoading" @click="loadCharacterRelationsForForm">
+          刷新当前角色关系
+        </NButton>
+      </div>
+
+      <NForm class="relation-form" @submit.prevent="handleSubmitRelation">
+        <div class="detail-grid detail-grid--relation-modal">
+          <NCard class="detail-card">
+            <template #header>关系表单</template>
+
+            <NFormItem label="发起角色" required>
+              <NSelect
+                v-model:value="relationForm.sourceId"
+                :options="relationCharacterOptions"
+                placeholder="选择关系发起方"
+                filterable
+              />
+            </NFormItem>
+
+            <NFormItem label="目标角色" required>
+              <NSelect
+                v-model:value="relationForm.targetId"
+                :options="relationTargetOptions"
+                placeholder="选择关系目标"
+                filterable
+              />
+            </NFormItem>
+
+            <NFormItem label="关系类型" required>
+              <NInput
+                v-model:value="relationForm.relType"
+                placeholder="例如：盟友、师徒、竞争者、宿敌"
+              />
+            </NFormItem>
+
+            <NFormItem label="关系强度">
+              <NInputNumber
+                v-model:value="relationForm.strength"
+                :min="-100"
+                :max="100"
+                :step="5"
+                class="full-width"
+                placeholder="范围 -100 到 100"
+              />
+            </NFormItem>
+
+            <NFormItem label="是否保密">
+              <NSwitch v-model:value="relationForm.isSecret" />
+            </NFormItem>
+
+            <NFormItem label="扩展信息（JSON 字符串）">
+              <NInput
+                v-model:value="relationForm.metadata"
+                type="textarea"
+                :rows="4"
+                placeholder='例如：{"scene":"学院时期","note":"仅少数人知情"}'
+              />
+            </NFormItem>
+
+            <div class="relation-form__tips">
+              <span>接口说明：</span>
+              <span>`source_id` 与 `target_id` 不能相同，`strength` 会被限制在 `-100 ~ 100`。</span>
+            </div>
+
+            <NSpace justify="end">
+              <NButton :disabled="relationSaving" @click="showRelationModal = false">关闭</NButton>
+              <NButton type="primary" :loading="relationSaving" @click="handleSubmitRelation">
+                提交绑定
+              </NButton>
+            </NSpace>
+          </NCard>
+
+          <NCard class="detail-card">
+            <template #header>已有直接关系</template>
+
+            <NAlert v-if="relationError" type="error" :show-icon="false" class="module-alert">
+              {{ relationError }}
+            </NAlert>
+
+            <div v-if="relationListLoading" class="module-loading">
+              <NSpin size="small" />
+            </div>
+
+            <NEmpty
+              v-else-if="!isValidCharacterId(relationForm.sourceId)"
+              description="请先选择一个发起角色，再查看其已有关系。"
+            />
+
+            <NEmpty
+              v-else-if="relationSummaryCards.length === 0"
+              :description="`${relationSourceName} 暂时还没有直接关系记录。`"
+            />
+
+            <div v-else class="relation-summary-list">
+              <article v-for="item in relationSummaryCards" :key="item.id" class="relation-summary-card">
+                <div class="relation-summary-card__head">
+                  <div>
+                    <h3 class="relation-summary-card__title">{{ item.counterpartName }}</h3>
+                    <p class="relation-summary-card__subtitle">
+                      {{ item.directionText }} · {{ item.relType }}
+                    </p>
+                  </div>
+                  <NTag size="small" :type="item.isSecret ? 'warning' : 'success'">
+                    {{ item.isSecret ? '保密关系' : '公开关系' }}
+                  </NTag>
+                </div>
+
+                <div class="kv-grid kv-grid--compact">
+                  <div class="kv-item">
+                    <span class="kv-label">关系强度</span>
+                    <span class="kv-value">{{ formatRelationshipStrength(item.strength) }}</span>
+                  </div>
+                  <div class="kv-item">
+                    <span class="kv-label">最近更新时间</span>
+                    <span class="kv-value">{{ formatDateTime(item.updatedAt) }}</span>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <NDivider />
+
+            <p class="relation-modal-footnote">
+              提示：如果你需要表达“B 对 A 的态度”，请把 B 设为发起角色，因为该接口创建的是有向关系。
+            </p>
+          </NCard>
+        </div>
+      </NForm>
     </NModal>
   </div>
 </template>
@@ -1098,6 +1485,10 @@ watch(
 
 .detail-grid--character-modal {
   grid-template-columns: 1fr 1fr;
+}
+
+.detail-grid--relation-modal {
+  grid-template-columns: 1.02fr 0.98fr;
 }
 
 .summary-card,
@@ -1409,6 +1800,74 @@ watch(
   line-height: 1.7;
 }
 
+.full-width {
+  width: 100%;
+}
+
+.relation-modal-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.relation-modal-intro__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: var(--color-text-body);
+}
+
+.relation-modal-intro__desc,
+.relation-modal-footnote {
+  margin: 0;
+  color: var(--color-text-desc);
+  line-height: 1.7;
+}
+
+.relation-form__tips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 16px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.relation-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.relation-summary-card {
+  padding: 16px;
+  border: 1px solid rgba(180, 142, 255, 0.1);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.relation-summary-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.relation-summary-card__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: var(--color-text-body);
+}
+
+.relation-summary-card__subtitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
 :deep(.n-card-header__main),
 :deep(.n-statistic .n-statistic-value),
 :deep(.n-statistic .n-statistic-label) {
@@ -1426,7 +1885,8 @@ watch(
 
   .detail-grid--branch,
   .character-grid,
-  .detail-grid--character-modal {
+  .detail-grid--character-modal,
+  .detail-grid--relation-modal {
     grid-template-columns: repeat(1, minmax(0, 1fr));
   }
 
@@ -1439,7 +1899,9 @@ watch(
   .page-header,
   .module-header,
   .branch-card__head,
-  .character-card__head {
+  .character-card__head,
+  .relation-modal-intro,
+  .relation-summary-card__head {
     flex-direction: column;
   }
 

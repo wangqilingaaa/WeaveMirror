@@ -79,7 +79,8 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
-      path: '/storyline/:characterId',
+      path: '/worlds/:worldId/storyline/:characterId',
+      alias: '/storyline/:characterId',
       name: 'Storyline',
       component: () => import('@/views/PersonalEpic.vue'),
       meta: { requiresAuth: true }
