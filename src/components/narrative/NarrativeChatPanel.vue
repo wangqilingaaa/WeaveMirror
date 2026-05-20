@@ -9,6 +9,7 @@ const props = defineProps<{
   messages: StageChatMessage[]
   draft: string
   sending: boolean
+  connectionLabel?: string
 }>()
 
 const emit = defineEmits<{
@@ -55,6 +56,7 @@ onMounted(() => {
       <div class="chat-panel__meta">
         <NTag size="small" round type="info">{{ contextTag }}</NTag>
         <NTag size="small" round>{{ activeCharacterName }}</NTag>
+        <NTag v-if="connectionLabel" size="small" round type="success">{{ connectionLabel }}</NTag>
       </div>
     </header>
 

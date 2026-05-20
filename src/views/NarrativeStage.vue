@@ -9,6 +9,8 @@ import NarrativeChatPanel from '@/components/narrative/NarrativeChatPanel.vue'
 import NarrativeCharacterSidebar from '@/components/narrative/NarrativeCharacterSidebar.vue'
 import NarrativeWorldSidebar from '@/components/narrative/NarrativeWorldSidebar.vue'
 import type { StageCharacterCard, StageChatMessage, StageWorldSection } from '@/components/narrative/stageTypes'
+import { useNarrativeWebSocket } from '@/composables/useNarrativeWebSocket'
+import { mapNarrativeSocketMessage } from '@/components/narrative/narrativeSocketMessageMapper'
 
 interface StageWorldSnapshot {
   name: string
@@ -52,6 +54,7 @@ const characterError = ref('')
 const chatDraft = ref('')
 const activeCharacterId = ref<number | null>(null)
 const chatMessages = ref<StageChatMessage[]>([])
+const pendingStreamMessageId = ref<string | null>(null)
 
 /**
  * 左侧世界栏严格限制为 `World` 类型中的真实字段。
@@ -120,12 +123,6 @@ function formatDateTime(value?: string) {
   return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : value
 }
 
-function wait(ms: number) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms)
-  })
-}
-
 function createChatMessage(payload: Omit<StageChatMessage, 'id' | 'timestamp'>): StageChatMessage {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -161,6 +158,17 @@ const stageCharacters = computed<StageCharacterCard[]>(() => {
 
 const activeCharacterCard = computed(() => {
   return stageCharacters.value.find((item) => item.id === activeCharacterId.value) ?? stageCharacters.value[0] ?? null
+})
+
+/**
+ * WebSocket 关系变化只返回 `character_id`，这里预先把当前页面已加载的角色列表整理成查找表，
+ * 供消息映射层把 ID 转成更易读的角色名称。
+ */
+const characterNameMap = computed<Record<number, string>>(() => {
+  return stageCharacters.value.reduce<Record<number, string>>((accumulator, character) => {
+    accumulator[character.id] = character.name
+    return accumulator
+  }, {})
 })
 
 const worldSidebarSections = computed<StageWorldSection[]>(() => {
@@ -244,12 +252,12 @@ function buildInitialMessages() {
     }),
     createChatMessage({
       sender: 'system',
-      type: 'dialogue',
-      title: activeCharacterCard.value?.name || '系统提示',
-      subtitle: activeCharacterCard.value?.role || '叙事舞台',
+      type: 'narration',
+      title: '连接说明',
+      subtitle: 'AI 通过 WebSocket 回复',
       content: activeCharacterCard.value
-        ? `当前已聚焦角色「${activeCharacterCard.value.name}」。请输入你的下一步对白、行动或叙述。`
-        : '当前世界还没有可用角色，你可以先输入叙述文本，或前往世界详情补充角色数据。'
+        ? `当前已聚焦角色「${activeCharacterCard.value.name}」。发送消息后，系统回复将完全由 AI 通过 WebSocket 推送回来。`
+        : '当前世界还没有可用角色，暂时无法提交回合；请先补充角色数据后再进行对话推进。'
     })
   ]
 }
@@ -260,25 +268,137 @@ function resetRuntimeState() {
   chatMessages.value = buildInitialMessages()
 }
 
-function buildSystemReply(userInput: string): StageChatMessage {
-  if (activeCharacterCard.value) {
-    return createChatMessage({
-      sender: 'system',
-      type: 'dialogue',
-      title: activeCharacterCard.value.name,
-      subtitle: activeCharacterCard.value.role,
-      content: `已记录你的输入：「${userInput}」。你可以继续围绕该角色与当前世界设定推进后续剧情。`
-    })
+function appendSystemMessage(payload: Omit<StageChatMessage, 'id' | 'timestamp' | 'sender'>) {
+  const messageItem = createChatMessage({
+    sender: 'system',
+    ...payload
+  })
+  chatMessages.value.push(messageItem)
+  return messageItem
+}
+
+function appendSystemMessages(payloads: Array<Omit<StageChatMessage, 'id' | 'timestamp' | 'sender'>>) {
+  return payloads.map((item) => appendSystemMessage(item))
+}
+
+function ensureStreamingMessage() {
+  const currentId = pendingStreamMessageId.value
+  if (currentId) {
+    return chatMessages.value.find((item) => item.id === currentId) ?? null
   }
 
-  return createChatMessage({
-    sender: 'system',
+  const streamMessage = appendSystemMessage({
     type: 'narration',
-    title: '系统记录',
-    subtitle: stageWorld.value.name,
-    content: `已记录你的输入：「${userInput}」。当前世界暂无角色数据，但这条内容已经进入舞台对话流。`
+    title: activeCharacterCard.value?.name || stageWorld.value.name,
+    subtitle: 'AI 剧情生成中',
+    content: ''
   })
+  pendingStreamMessageId.value = streamMessage.id
+  return streamMessage
 }
+
+function handleSocketUiAction(payload: Parameters<typeof mapNarrativeSocketMessage>[0]) {
+  const action = mapNarrativeSocketMessage(payload, {
+    worldName: stageWorld.value.name,
+    activeCharacterName: activeCharacterCard.value?.name,
+    characterNameMap: characterNameMap.value
+  })
+
+  if (action.kind === 'stream_append') {
+    const targetMessage = ensureStreamingMessage()
+    if (targetMessage) {
+      targetMessage.title = action.title
+      targetMessage.subtitle = action.subtitle
+      targetMessage.content += action.chunk
+    }
+    return
+  }
+
+  if (action.kind === 'stream_complete') {
+    /**
+     * 某些后端实现可能会在结构化结果已经提前落地后，额外再补发一次 complete 事件。
+     * 这时如果当前既没有占位中的流消息，也已经不处于发送态，就直接忽略，避免重复追加同一轮回复。
+     */
+    if (!pendingStreamMessageId.value && !sending.value) {
+      return
+    }
+
+    const targetMessage = ensureStreamingMessage()
+    if (targetMessage) {
+      targetMessage.subtitle = 'AI 剧情回复'
+      targetMessage.content = action.fullText || targetMessage.content
+    }
+    pendingStreamMessageId.value = null
+    sending.value = false
+    return
+  }
+
+  if (action.kind === 'append_message') {
+    appendSystemMessage(action.message)
+    return
+  }
+
+  if (action.kind === 'append_messages') {
+    const [firstMessage, ...restMessages] = action.messages
+    const targetMessage = pendingStreamMessageId.value
+      ? chatMessages.value.find((item) => item.id === pendingStreamMessageId.value) ?? null
+      : null
+
+    /**
+     * 如果页面上已经存在“AI 剧情生成中”的占位气泡，就直接把首条结构化消息写回去，
+     * 这样可以避免同一轮回复出现一条空白占位消息再追加一条正式剧情消息。
+     */
+    if (targetMessage && firstMessage) {
+      targetMessage.type = firstMessage.type
+      targetMessage.title = firstMessage.title
+      targetMessage.subtitle = firstMessage.subtitle
+      targetMessage.content = firstMessage.content
+    } else if (firstMessage) {
+      appendSystemMessage(firstMessage)
+    }
+
+    if (restMessages.length) {
+      appendSystemMessages(restMessages)
+    }
+
+    if (action.finishStreaming) {
+      pendingStreamMessageId.value = null
+      sending.value = false
+    }
+    return
+  }
+
+  if (action.kind === 'error') {
+    pendingStreamMessageId.value = null
+    sending.value = false
+    message.error(action.content)
+    appendSystemMessage({
+      type: 'narration',
+      title: '系统提示',
+      subtitle: 'WebSocket 异常',
+      content: action.content
+    })
+  }
+}
+
+const {
+  connectionState: wsConnectionState,
+  connectionLabel: wsConnectionLabel,
+  errorMessage: wsErrorMessage,
+  connect: connectNarrativeSocket,
+  sendTurnSubmit
+} = useNarrativeWebSocket({
+  worldId,
+  onServerMessage(payload) {
+    handleSocketUiAction(payload)
+  },
+  onSocketClosed() {
+    if (sending.value) {
+      sending.value = false
+      message.error('WebSocket 已断开，当前回合未收到 AI 回复。')
+    }
+  }
+})
 
 async function loadWorld() {
   if (!Number.isInteger(worldId.value) || worldId.value <= 0) {
@@ -321,6 +441,7 @@ async function refreshStage() {
   pageLoading.value = true
   await Promise.allSettled([loadWorld(), loadCharacters()])
   resetRuntimeState()
+  connectNarrativeSocket()
   pageLoading.value = false
 }
 
@@ -356,6 +477,16 @@ async function handleSendMessage() {
     return
   }
 
+  if (!activeCharacterCard.value) {
+    message.warning('当前没有可用角色，无法提交回合。')
+    return
+  }
+
+  if (wsConnectionState.value !== 'connected') {
+    message.error('WebSocket 未连接，无法发送消息。')
+    return
+  }
+
   chatMessages.value.push(
     createChatMessage({
       sender: 'user',
@@ -368,9 +499,13 @@ async function handleSendMessage() {
 
   chatDraft.value = ''
   sending.value = true
-  await wait(280)
-  chatMessages.value.push(buildSystemReply(normalizedDraft))
-  sending.value = false
+  pendingStreamMessageId.value = null
+  try {
+    sendTurnSubmit(activeCharacterCard.value.id, normalizedDraft)
+  } catch (error: any) {
+    sending.value = false
+    message.error(error?.message || '发送消息失败。')
+  }
 }
 
 watch(
@@ -425,6 +560,7 @@ watch(
             :active-character-name="activeCharacterCard?.name || '未选择角色'"
             :messages="chatMessages"
             :sending="sending"
+          :connection-label="wsConnectionLabel"
             @submit="handleSendMessage"
           />
         </div>
@@ -444,6 +580,10 @@ watch(
 
       <section v-if="worldError" class="page-notice">
         {{ worldError }}
+      </section>
+
+      <section v-if="wsErrorMessage && wsConnectionState === 'error'" class="page-notice">
+        {{ wsErrorMessage }}
       </section>
     </template>
   </div>
