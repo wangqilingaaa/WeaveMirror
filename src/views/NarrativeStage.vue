@@ -3,12 +3,13 @@ import { computed, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NSpin, useMessage } from 'naive-ui'
-import { getWorldApi, listCharactersApi } from '@/api'
-import type { Character, World } from '@/types'
+import { createChatSessionApi, getWorldApi, listCharactersApi, listChatSessionMessagesApi, listChatSessionsApi } from '@/api'
+import type { Character, ChatMessage, ChatSession, World } from '@/types'
 import NarrativeChatPanel from '@/components/narrative/NarrativeChatPanel.vue'
 import NarrativeCharacterSidebar from '@/components/narrative/NarrativeCharacterSidebar.vue'
+import NarrativeSessionSidebar from '@/components/narrative/NarrativeSessionSidebar.vue'
 import NarrativeWorldSidebar from '@/components/narrative/NarrativeWorldSidebar.vue'
-import type { StageCharacterCard, StageChatMessage, StageWorldSection } from '@/components/narrative/stageTypes'
+import type { StageCharacterCard, StageChatMessage, StageSessionCard, StageWorldSection } from '@/components/narrative/stageTypes'
 import { useNarrativeWebSocket } from '@/composables/useNarrativeWebSocket'
 import { mapNarrativeSocketMessage } from '@/components/narrative/narrativeSocketMessageMapper'
 
@@ -51,9 +52,15 @@ const world = ref<World | null>(null)
 const characters = ref<Character[]>([])
 const worldError = ref('')
 const characterError = ref('')
+const sessionError = ref('')
 const chatDraft = ref('')
 const activeCharacterId = ref<number | null>(null)
+const activeSessionId = ref<number | null>(null)
+const chatSessions = ref<ChatSession[]>([])
 const chatMessages = ref<StageChatMessage[]>([])
+const sessionLoading = ref(false)
+const sessionCreating = ref(false)
+const sessionMessagesLoading = ref(false)
 const pendingStreamMessageId = ref<string | null>(null)
 
 /**
@@ -123,6 +130,12 @@ function formatDateTime(value?: string) {
   return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : value
 }
 
+function formatShortDateTime(value?: string) {
+  if (!value) return '未活跃'
+  const parsed = dayjs(value)
+  return parsed.isValid() ? parsed.format('MM-DD HH:mm') : value
+}
+
 function createChatMessage(payload: Omit<StageChatMessage, 'id' | 'timestamp'>): StageChatMessage {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -169,6 +182,39 @@ const characterNameMap = computed<Record<number, string>>(() => {
     accumulator[character.id] = character.name
     return accumulator
   }, {})
+})
+
+/**
+ * 聊天会话列表接口当前不支持按世界过滤，
+ * 因此前端在舞台页只展示“属于当前世界”的会话，避免跨世界数据混入当前舞台。
+ */
+const currentWorldSessions = computed<ChatSession[]>(() => {
+  return chatSessions.value.filter((item) => item.world_id === worldId.value)
+})
+
+function formatSessionTypeLabel(sessionType?: string) {
+  if (sessionType === 'narrative') return '叙事'
+  if (sessionType === 'chat') return '聊天'
+  return sessionType || '未分类'
+}
+
+function resolveCharacterName(characterId?: number | null) {
+  if (!characterId) return '未绑定角色'
+  return characterNameMap.value[characterId] || `角色 #${characterId}`
+}
+
+const stageSessions = computed<StageSessionCard[]>(() => {
+  return currentWorldSessions.value.map((session) => ({
+    id: session.id,
+    title: session.title || '新的对话',
+    sessionTypeLabel: formatSessionTypeLabel(session.session_type),
+    characterName: resolveCharacterName(session.character_id),
+    lastMessageAtText: `最近活跃：${formatShortDateTime(session.last_message_at)}`,
+    messageCountText: `${session.message_count} 条消息`,
+    summary:
+      session.summary
+      || `${resolveCharacterName(session.character_id)} · ${session.message_count > 0 ? '可继续沿用既有上下文' : '新建后尚无历史消息'}`
+  }))
 })
 
 const worldSidebarSections = computed<StageWorldSection[]>(() => {
@@ -256,16 +302,157 @@ function buildInitialMessages() {
       title: '连接说明',
       subtitle: 'AI 通过 WebSocket 回复',
       content: activeCharacterCard.value
-        ? `当前已聚焦角色「${activeCharacterCard.value.name}」。发送消息后，系统回复将完全由 AI 通过 WebSocket 推送回来。`
+        ? `当前已聚焦角色「${activeCharacterCard.value.name}」。你可以在右侧角色栏切换当前角色，后续发送的消息会以该角色为行动主体。`
         : '当前世界还没有可用角色，暂时无法提交回合；请先补充角色数据后再进行对话推进。'
     })
   ]
 }
 
+function createSessionNoticeMessage(session: ChatSession): StageChatMessage {
+  return createChatMessage({
+    sender: 'system',
+    type: 'narration',
+    title: '当前会话',
+    subtitle: session.title || '新的对话',
+    content: `当前会话类型为「${formatSessionTypeLabel(session.session_type)}」，默认行动角色为「${resolveCharacterName(session.character_id)}」。`
+  })
+}
+
+function mapHistoryMessageToStageMessage(historyMessage: ChatMessage): StageChatMessage {
+  const isUserMessage = historyMessage.role === 'user'
+  const subtitleParts = [resolveCharacterName(historyMessage.character_id)]
+
+  if (!isUserMessage && historyMessage.model_name) {
+    subtitleParts.push(historyMessage.model_name)
+  }
+
+  return {
+    id: `history-${historyMessage.id}`,
+    sender: isUserMessage ? 'user' : 'system',
+    type: isUserMessage ? 'dialogue' : 'narration',
+    title: isUserMessage ? '你' : 'AI 剧情',
+    subtitle: subtitleParts.filter(Boolean).join(' · '),
+    content: historyMessage.content || '（空消息）',
+    timestamp: formatNowFromValue(historyMessage.created_at)
+  }
+}
+
+function formatNowFromValue(value?: string) {
+  if (!value) return formatNow()
+  const parsed = dayjs(value)
+  return parsed.isValid() ? parsed.format('HH:mm:ss') : formatNow()
+}
+
+function syncActiveCharacterFromSession(session: ChatSession | null) {
+  const fallbackCharacterId = stageCharacters.value[0]?.id ?? null
+  const sessionCharacterId = session?.character_id ?? null
+  const hasMatchedCharacter = sessionCharacterId ? !!characterNameMap.value[sessionCharacterId] : false
+  activeCharacterId.value = hasMatchedCharacter ? sessionCharacterId : fallbackCharacterId
+}
+
 function resetRuntimeState() {
   activeCharacterId.value = stageCharacters.value[0]?.id ?? null
+  activeSessionId.value = null
   chatDraft.value = ''
+  pendingStreamMessageId.value = null
   chatMessages.value = buildInitialMessages()
+}
+
+async function loadChatSessions() {
+  if (!Number.isInteger(worldId.value) || worldId.value <= 0) {
+    chatSessions.value = []
+    sessionError.value = '世界 ID 无效，当前无法加载会话列表。'
+    return
+  }
+
+  sessionLoading.value = true
+  try {
+    sessionError.value = ''
+    const data = await listChatSessionsApi({ page: 1, limit: 100 })
+    chatSessions.value = data.sessions ?? []
+  } catch (err: any) {
+    chatSessions.value = []
+    sessionError.value = err?.message || '加载会话列表失败。'
+  } finally {
+    sessionLoading.value = false
+  }
+}
+
+async function loadSessionMessages(sessionId: number) {
+  sessionMessagesLoading.value = true
+  try {
+    const data = await listChatSessionMessagesApi(sessionId, { page: 1, limit: 100 })
+    const selectedSession = currentWorldSessions.value.find((item) => item.id === sessionId) ?? null
+
+    activeSessionId.value = sessionId
+    syncActiveCharacterFromSession(selectedSession)
+    chatMessages.value = [
+      buildInitialMessages()[0],
+      createSessionNoticeMessage(selectedSession ?? {
+        id: sessionId,
+        user_id: 0,
+        title: '新的对话',
+        session_type: 'chat',
+        status: 'active',
+        last_message_at: '',
+        message_count: data.total ?? 0,
+        input_token_total: 0,
+        output_token_total: 0,
+        created_at: '',
+        updated_at: ''
+      }),
+      ...((data.messages ?? []).map(mapHistoryMessageToStageMessage))
+    ]
+  } catch (err: any) {
+    chatMessages.value = buildInitialMessages()
+    message.error(err?.message || '加载会话历史失败。')
+  } finally {
+    sessionMessagesLoading.value = false
+  }
+}
+
+async function handleSessionSelect(sessionId: number) {
+  if (activeSessionId.value === sessionId && !sessionMessagesLoading.value) {
+    return
+  }
+  await loadSessionMessages(sessionId)
+}
+
+async function handleCreateSession() {
+  try {
+    await createStageSession()
+  } catch (err: any) {
+    message.error(err?.message || '创建会话失败。')
+  }
+}
+
+async function createStageSession(options?: { silent?: boolean; preferredCharacterId?: number | null }) {
+  if (!Number.isInteger(worldId.value) || worldId.value <= 0) {
+    throw new Error('世界 ID 无效，无法创建会话。')
+  }
+
+  sessionCreating.value = true
+  try {
+    const selectedCharacterId = options?.preferredCharacterId ?? activeCharacterId.value ?? stageCharacters.value[0]?.id ?? null
+    const response = await createChatSessionApi({
+      world_id: worldId.value,
+      character_id: selectedCharacterId ?? undefined,
+      title: selectedCharacterId
+        ? `${resolveCharacterName(selectedCharacterId)} 的叙事会话`
+        : `${stageWorld.value.name} 的新会话`,
+      session_type: 'narrative'
+    })
+
+    await loadChatSessions()
+    await loadSessionMessages(response.session.id)
+
+    if (!options?.silent) {
+      message.success('已创建新的叙事会话。')
+    }
+    return response.session
+  } finally {
+    sessionCreating.value = false
+  }
 }
 
 function appendSystemMessage(payload: Omit<StageChatMessage, 'id' | 'timestamp' | 'sender'>) {
@@ -298,6 +485,10 @@ function ensureStreamingMessage() {
 }
 
 function handleSocketUiAction(payload: Parameters<typeof mapNarrativeSocketMessage>[0]) {
+  if (typeof payload.session_id === 'number' && payload.session_id > 0) {
+    activeSessionId.value = payload.session_id
+  }
+
   const action = mapNarrativeSocketMessage(payload, {
     worldName: stageWorld.value.name,
     activeCharacterName: activeCharacterCard.value?.name,
@@ -330,6 +521,7 @@ function handleSocketUiAction(payload: Parameters<typeof mapNarrativeSocketMessa
     }
     pendingStreamMessageId.value = null
     sending.value = false
+    void loadChatSessions()
     return
   }
 
@@ -364,6 +556,7 @@ function handleSocketUiAction(payload: Parameters<typeof mapNarrativeSocketMessa
     if (action.finishStreaming) {
       pendingStreamMessageId.value = null
       sending.value = false
+      void loadChatSessions()
     }
     return
   }
@@ -439,9 +632,13 @@ async function loadCharacters() {
 
 async function refreshStage() {
   pageLoading.value = true
-  await Promise.allSettled([loadWorld(), loadCharacters()])
+  await Promise.allSettled([loadWorld(), loadCharacters(), loadChatSessions()])
   resetRuntimeState()
   connectNarrativeSocket()
+
+  if (currentWorldSessions.value.length > 0) {
+    await loadSessionMessages(currentWorldSessions.value[0].id)
+  }
   pageLoading.value = false
 }
 
@@ -453,13 +650,42 @@ function goToWorldDetail() {
   router.push({ name: 'WorldDetail', params: { worldId: worldId.value } })
 }
 
+/**
+ * 切换当前角色只更新舞台页内的“当前行动主体”，
+ * 不直接清空既有消息，避免用户在同一舞台中切角色时丢失上下文。
+ * 同时补一条系统提示，让聊天记录里明确记录角色焦点的变化。
+ */
 function handleCharacterSelect(character: StageCharacterCard) {
+  if (activeCharacterId.value === character.id) {
+    message.info(`当前角色已是「${character.name}」。`)
+    return
+  }
+
   activeCharacterId.value = character.id
+  appendSystemMessage({
+    type: 'narration',
+    title: '角色已切换',
+    subtitle: '当前行动主体已更新',
+    content: `当前角色已切换为「${character.name}」，接下来发送的消息都会以该角色的视角和行动继续推进剧情。`
+  })
+  message.success(`已切换当前角色：${character.name}`)
+}
+
+/**
+ * 故事线仍然保留独立入口，但与“切换当前角色”解耦，
+ * 避免用户只是想切换操控角色时被强制带离当前舞台。
+ */
+function goToCharacterStoryline(characterId = activeCharacterId.value) {
+  if (!characterId) {
+    message.warning('当前没有可查看故事线的角色。')
+    return
+  }
+
   router.push({
     name: 'Storyline',
     params: {
       worldId: worldId.value,
-      characterId: character.id
+      characterId
     }
   })
 }
@@ -487,6 +713,25 @@ async function handleSendMessage() {
     return
   }
 
+  if (sessionMessagesLoading.value) {
+    message.info('当前会话历史仍在加载，请稍候。')
+    return
+  }
+
+  let targetSessionId = activeSessionId.value
+  if (!targetSessionId) {
+    try {
+      const createdSession = await createStageSession({
+        silent: true,
+        preferredCharacterId: activeCharacterCard.value.id
+      })
+      targetSessionId = createdSession?.id ?? null
+    } catch (error: any) {
+      message.error(error?.message || '创建会话失败，无法发送消息。')
+      return
+    }
+  }
+
   chatMessages.value.push(
     createChatMessage({
       sender: 'user',
@@ -501,7 +746,7 @@ async function handleSendMessage() {
   sending.value = true
   pendingStreamMessageId.value = null
   try {
-    sendTurnSubmit(activeCharacterCard.value.id, normalizedDraft)
+    sendTurnSubmit(activeCharacterCard.value.id, normalizedDraft, targetSessionId ?? undefined)
   } catch (error: any) {
     sending.value = false
     message.error(error?.message || '发送消息失败。')
@@ -539,17 +784,25 @@ watch(
         <div class="stage-page-header__actions">
           <NButton secondary @click="goToWorkshop">返回工坊</NButton>
           <NButton secondary @click="goToWorldDetail">世界详情</NButton>
+          <NButton secondary :disabled="!activeCharacterCard" @click="goToCharacterStoryline()">
+            当前角色故事线
+          </NButton>
           <NButton type="primary" @click="refreshStage">刷新舞台</NButton>
         </div>
       </header>
 
       <div class="stage-layout">
         <div class="stage-column stage-column--left">
-          <NarrativeWorldSidebar
-            :world-name="stageWorld.name"
-            :header-tag="`${stageWorld.epoch} · ${stageWorld.currentYear ?? '未设置年份'}`"
-            :subtitle="'这里只展示当前世界模型中真实存在的字段，不再追加任务、资源或场景扩展信息。'"
-            :sections="worldSidebarSections"
+          <NarrativeSessionSidebar
+            title="会话列表"
+            :subtitle="'左侧会话栏基于聊天接口文档接入。你可以创建新会话、切换历史会话，并在当前舞台继续续写。'"
+            :sessions="stageSessions"
+            :active-session-id="activeSessionId"
+            :loading="sessionLoading"
+            :creating="sessionCreating"
+            :error="sessionError"
+            @create="handleCreateSession"
+            @select="handleSessionSelect"
           />
         </div>
 
@@ -560,21 +813,33 @@ watch(
             :active-character-name="activeCharacterCard?.name || '未选择角色'"
             :messages="chatMessages"
             :sending="sending"
-          :connection-label="wsConnectionLabel"
+            :connection-label="wsConnectionLabel"
             @submit="handleSendMessage"
           />
         </div>
 
-        <div class="stage-column stage-column--right">
-          <NarrativeCharacterSidebar
-            title="角色列表"
-            :subtitle="'仅展示头像、名称和身份标签；点击角色卡会跳转到对应故事线。'"
-            :characters="stageCharacters"
-            :active-character-id="activeCharacterId"
-            :loading="false"
-            :error="characterError"
-            @select="handleCharacterSelect"
-          />
+        <div class="stage-column stage-column--right stage-column--stack">
+          <div class="stage-stack-panel">
+            <NarrativeWorldSidebar
+              :world-name="stageWorld.name"
+              :header-tag="`${stageWorld.epoch} · ${stageWorld.currentYear ?? '未设置年份'}`"
+              :subtitle="'这里只展示当前世界模型中真实存在的字段，不再追加任务、资源或场景扩展信息。'"
+              :sections="worldSidebarSections"
+            />
+          </div>
+
+          <div class="stage-stack-panel">
+            <NarrativeCharacterSidebar
+              title="角色列表"
+              :subtitle="'点击角色卡即可切换当前角色；如需离开舞台查看个人故事线，请使用下方故事线按钮。'"
+              :characters="stageCharacters"
+              :active-character-id="activeCharacterId"
+              :loading="false"
+              :error="characterError"
+              @select="handleCharacterSelect"
+              @storyline="goToCharacterStoryline($event.id)"
+            />
+          </div>
         </div>
       </div>
 
@@ -691,6 +956,16 @@ watch(
   height: 100%;
 }
 
+.stage-column--stack {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+}
+
+.stage-stack-panel {
+  min-height: 0;
+}
+
 .page-notice {
   padding: 12px 14px;
   border-radius: var(--radius-md);
@@ -722,6 +997,10 @@ watch(
 
   .stage-column {
     height: auto;
+  }
+
+  .stage-column--stack {
+    grid-template-rows: repeat(2, minmax(0, auto));
   }
 }
 

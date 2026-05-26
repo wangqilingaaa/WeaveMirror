@@ -121,7 +121,12 @@ export function useNarrativeWebSocket(options: UseNarrativeWebSocketOptions) {
     }
   }
 
-  function sendTurnSubmit(characterId: number, content: string) {
+  /**
+   * 发送一轮叙事输入。
+   * `sessionId` 为可选值：如果传入，则后端会把本轮消息归档到对应会话；
+   * 如果未传，则保持兼容旧行为。
+   */
+  function sendTurnSubmit(characterId: number, content: string, sessionId?: number) {
     if (!narrativeSocket || narrativeSocket.readyState !== WebSocket.OPEN) {
       throw new Error('WebSocket 未连接，无法发送消息。')
     }
@@ -130,7 +135,8 @@ export function useNarrativeWebSocket(options: UseNarrativeWebSocketOptions) {
       type: 'turn_submit',
       data: {
         character_id: characterId,
-        content
+        content,
+        session_id: sessionId
       }
     }
 

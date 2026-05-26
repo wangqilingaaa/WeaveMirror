@@ -13,6 +13,7 @@ defineProps<{
 
 const emit = defineEmits<{
   select: [character: StageCharacterCard]
+  storyline: [character: StageCharacterCard]
 }>()
 </script>
 
@@ -37,27 +38,43 @@ const emit = defineEmits<{
     </div>
 
     <div v-else class="character-list">
-      <button
+      <article
         v-for="character in characters"
         :key="character.id"
-        type="button"
-        class="character-item"
-        :class="{ 'character-item--active': activeCharacterId === character.id }"
-        @click="emit('select', character)"
+        class="character-card"
+        :class="{ 'character-card--active': activeCharacterId === character.id }"
       >
-        <div class="character-item__avatar">
-          <NAvatar round :size="44">
-            {{ character.avatarText }}
-          </NAvatar>
-        </div>
-
-        <div class="character-item__body">
-          <div class="character-item__head">
-            <strong class="character-item__name">{{ character.name }}</strong>
-            <NTag size="small" round type="info">{{ character.role }}</NTag>
+        <button
+          type="button"
+          class="character-item"
+          :class="{ 'character-item--active': activeCharacterId === character.id }"
+          @click="emit('select', character)"
+        >
+          <div class="character-item__avatar">
+            <NAvatar round :size="44">
+              {{ character.avatarText }}
+            </NAvatar>
           </div>
-        </div>
-      </button>
+
+          <div class="character-item__body">
+            <div class="character-item__head">
+              <strong class="character-item__name">{{ character.name }}</strong>
+              <NTag size="small" round type="info">{{ character.role }}</NTag>
+            </div>
+            <p class="character-item__hint">
+              {{ activeCharacterId === character.id ? '当前角色，发送消息时会以该角色身份行动。' : '点击切换为当前角色。' }}
+            </p>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          class="character-storyline-button"
+          @click="emit('storyline', character)"
+        >
+          查看故事线
+        </button>
+      </article>
     </div>
   </aside>
 </template>
@@ -125,6 +142,12 @@ const emit = defineEmits<{
   padding-right: 6px;
 }
 
+.character-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .character-item {
   width: 100%;
   display: flex;
@@ -150,8 +173,14 @@ const emit = defineEmits<{
   background: rgba(180, 142, 255, 0.08);
 }
 
+.character-card--active .character-storyline-button {
+  border-color: rgba(180, 142, 255, 0.26);
+  color: var(--color-primary);
+}
+
 .character-item__body {
   min-width: 0;
+  flex: 1;
 }
 
 .character-item__head {
@@ -165,6 +194,33 @@ const emit = defineEmits<{
 .character-item__name {
   color: var(--color-text-body);
   line-height: 1.5;
+}
+
+.character-item__hint {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.character-storyline-button {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px dashed rgba(180, 142, 255, 0.18);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--color-text-desc);
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.character-storyline-button:hover {
+  border-color: rgba(180, 142, 255, 0.26);
+  background: rgba(180, 142, 255, 0.06);
+  color: var(--color-text-body);
 }
 
 @media (max-width: 768px) {

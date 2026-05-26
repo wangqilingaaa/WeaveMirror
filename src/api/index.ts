@@ -57,3 +57,9 @@ export {
   pinEntryApi,
   deleteEntryApi
 } from './storyline'
+
+export {
+  createChatSessionApi,
+  listChatSessionsApi,
+  listChatSessionMessagesApi
+} from './chat'

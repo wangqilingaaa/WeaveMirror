@@ -6,6 +6,7 @@ export interface WSClientMessage {
   data: {
     character_id: number
     content: string
+    session_id?: number
   }
 }
 
@@ -57,5 +58,6 @@ export interface WSServerMessage {
    * 实际结构未完全固定，因此先按宽松对象数组接收，再在展示层做格式化。
    */
   ripple_preview?: Array<Record<string, unknown>>
+  session_id?: number
   data?: GameResponse | Record<string, unknown>
 }

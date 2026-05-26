@@ -43,3 +43,17 @@ export interface StageCharacterCard {
   avatarText: string
   priority: number
 }
+
+/**
+ * 左侧会话栏中的轻量会话卡片。
+ * 这里把原始接口字段预处理成更适合展示的结构，避免组件模板里塞太多格式化逻辑。
+ */
+export interface StageSessionCard {
+  id: number
+  title: string
+  sessionTypeLabel: string
+  characterName: string
+  lastMessageAtText: string
+  messageCountText: string
+  summary: string
+}
