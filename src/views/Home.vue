@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { NButton, NAvatar, useMessage } from 'naive-ui'
-import { useAppStore } from '@/stores/app'
+import { useAppStore } from '@/stores'
 
 const router = useRouter()
 const appStore = useAppStore()

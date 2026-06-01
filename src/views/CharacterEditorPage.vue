@@ -20,7 +20,7 @@ import {
   updateCharacterApi
 } from '@/api'
 import CharacterEditorForm from '@/components/worldbook/CharacterEditorForm.vue'
-import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
+import { useUnsavedChangesGuard } from '@/composables'
 import type { Character, CharacterInput, World } from '@/types'
 
 const route = useRoute()

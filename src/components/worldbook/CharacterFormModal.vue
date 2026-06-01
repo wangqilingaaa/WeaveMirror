@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, toRef, watch } from 'vue'
 import {
   NButton,
   NDivider,
@@ -20,20 +20,14 @@ import {
   RemoveOutline,
   SparklesOutline
 } from '@vicons/ionicons5'
-import type {
-  Character,
-  CharacterInput
-} from '@/types'
+import type { Character, CharacterInput } from '@/types'
 import {
-  buildCharacterPayload,
   CHARACTER_STATE_OPTIONS,
-  createDefaultFormData,
-  formatJson,
   LIFE_STAGE_OPTIONS,
   NSFW_LEVEL_OPTIONS,
-  type CharacterFormData,
   VIRILITY_OPTIONS
 } from './characterForm'
+import { useCharacterFormState } from './useCharacterFormState'
 
 const props = defineProps<{
   show: boolean
@@ -53,22 +47,26 @@ const emit = defineEmits<{
 const message = useMessage()
 
 /**
- * 表单数据在弹窗内部维护。
- * 这样做的原因是：页面层只需要提供“当前编辑对象”和“是否显示”，不需要感知所有细碎字段。
+ * 弹窗表单与页面表单共享同一套状态逻辑。
+ * 这样可以确保字段默认值、payload 清洗规则、AI 回填行为在两个入口保持完全一致。
  */
-const formData = reactive<CharacterFormData>(createDefaultFormData(props.worldId))
-const metadataJson = ref('')
-const bodyBuildAdditionalJson = ref('')
-const baseAttributesExtraJson = ref('')
+const {
+  formData,
+  metadataJson,
+  bodyBuildAdditionalJson,
+  baseAttributesExtraJson,
+  resetForm,
+  addStringItem,
+  removeStringItem,
+  addDistinguishingMark,
+  removeDistinguishingMark,
+  addSkill,
+  removeSkill,
+  buildPayload,
+  applyGeneratedCharacter
+} = useCharacterFormState(toRef(props, 'worldId'))
 
 const modalTitle = computed(() => (props.character?.id ? '编辑角色' : '创建角色'))
-
-function resetForm(source?: Character | null) {
-  Object.assign(formData, createDefaultFormData(props.worldId, source ?? undefined))
-  metadataJson.value = formatJson(source?.metadata)
-  bodyBuildAdditionalJson.value = formatJson(source?.body_build?.additional)
-  baseAttributesExtraJson.value = formatJson(source?.base_attributes?.extra)
-}
 
 watch(
   () => [props.show, props.character, props.worldId] as const,
@@ -83,73 +81,9 @@ function closeModal() {
   emit('update:show', false)
 }
 
-function addStringItem(list: string[]) {
-  list.push('')
-}
-
-function removeStringItem(list: string[], index: number) {
-  list.splice(index, 1)
-}
-
-function addDistinguishingMark() {
-  formData.distinguishing_marks.push({
-    type: '',
-    location: '',
-    description: '',
-    size: '',
-    visibility: ''
-  })
-}
-
-function removeDistinguishingMark(index: number) {
-  formData.distinguishing_marks.splice(index, 1)
-}
-
-function addSkill() {
-  formData.skills.push({
-    name: '',
-    level: null,
-    category: '',
-    description: ''
-  })
-}
-
-function removeSkill(index: number) {
-  formData.skills.splice(index, 1)
-}
-
-/**
- * 统一从当前表单构建请求体。
- * 提交保存和 AI 生成都依赖同一份清洗逻辑，集中在这里可以确保两条流程的数据结构完全一致。
- */
-function buildCurrentPayload(): CharacterInput {
-  return buildCharacterPayload(formData, {
-      worldId: props.worldId,
-      metadataJson: metadataJson.value,
-      bodyBuildAdditionalJson: bodyBuildAdditionalJson.value,
-      baseAttributesExtraJson: baseAttributesExtraJson.value
-    })
-}
-
-/**
- * 将 AI 返回的结果重新铺回表单。
- * 这里继续复用默认值工厂，避免手写几十个字段的回填映射，降低后续字段扩展时的维护成本。
- */
-function applyGeneratedCharacter(payload?: CharacterInput | null) {
-  // AI 接口在联调阶段可能出现“包装层缺失 / 字段为空”的情况，这里先做保护，避免直接读取 undefined 报错。
-  if (!payload) {
-    throw new Error('AI 返回的角色数据为空，无法回填到表单')
-  }
-
-  Object.assign(formData, createDefaultFormData(props.worldId, payload as Character))
-  metadataJson.value = formatJson(payload.metadata)
-  bodyBuildAdditionalJson.value = formatJson(payload.body_build?.additional)
-  baseAttributesExtraJson.value = formatJson(payload.base_attributes?.extra)
-}
-
 function handleSubmit() {
   try {
-    const payload = buildCurrentPayload()
+    const payload = buildPayload()
     emit('submit', payload)
   } catch (err: any) {
     message.error(err?.message || '表单数据有误')
@@ -158,7 +92,7 @@ function handleSubmit() {
 
 function handleEnhance() {
   try {
-    const payload = buildCurrentPayload()
+    const payload = buildPayload()
     emit('enhance', payload)
   } catch (err: any) {
     message.error(err?.message || '请先完善角色基础信息')

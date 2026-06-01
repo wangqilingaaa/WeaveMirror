@@ -17,7 +17,7 @@ import {
 import { ArrowBackOutline, SparklesOutline, SaveOutline } from '@vicons/ionicons5'
 import { createWorldApi, enhanceWorldSettingsApi, getWorldApi, updateWorldApi } from '@/api'
 import WorldSettingsForm from '@/components/world/WorldSettingsForm.vue'
-import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
+import { useUnsavedChangesGuard } from '@/composables'
 import type { World, WorldSettings } from '@/types'
 
 const route = useRoute()

@@ -6,7 +6,7 @@ import {
   NIcon
 } from 'naive-ui'
 import { AddOutline, BookOutline, SettingsOutline } from '@vicons/ionicons5'
-import { useAppStore } from '@/stores/app'
+import { useAppStore } from '@/stores'
 import { listWorldsApi } from '@/api'
 import type { World } from '@/types'
 

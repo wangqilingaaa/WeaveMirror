@@ -1,9 +1,17 @@
 import axios from 'axios'
-import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
+import type { AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import type { ApiResponse } from '@/types'
+import { clearAuthSession, getStoredToken } from '@/utils/authStorage'
 
 /** API 基础配置 */
 const BASE_URL = ''
+const DEFAULT_RETRY_COUNT = 1
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504])
+
+interface RetryableRequestConfig extends AxiosRequestConfig {
+  __retryCount?: number
+  skipRetry?: boolean
+}
 
 /** 创建 Axios 实例 */
 const client: AxiosInstance = axios.create({
@@ -17,7 +25,7 @@ const client: AxiosInstance = axios.create({
 /** 请求拦截器：自动携带 JWT Token */
 client.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem('weavemirror_token')
+    const token = getStoredToken()
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -39,14 +47,37 @@ client.interceptors.response.use(
     return response
   },
   (error) => {
+    const config = error.config as RetryableRequestConfig | undefined
+
+    /**
+     * 对幂等请求做一次轻量重试。
+     * 这样可以覆盖偶发的网关抖动、超时和 429，而不会把写请求重复提交。
+     */
+    if (
+      config
+      && !config.skipRetry
+      && (config.method?.toLowerCase() === 'get' || config.method?.toLowerCase() === 'head')
+    ) {
+      const currentRetryCount = config.__retryCount ?? 0
+      const status = error.response?.status
+      const shouldRetry =
+        error.code === 'ECONNABORTED'
+        || !error.response
+        || (typeof status === 'number' && RETRYABLE_STATUS.has(status))
+
+      if (shouldRetry && currentRetryCount < DEFAULT_RETRY_COUNT) {
+        config.__retryCount = currentRetryCount + 1
+        return client.request(config)
+      }
+    }
+
     if (error.response) {
       const status = error.response.status
       const msg = error.response.data?.message
       switch (status) {
         case 401:
           // Token 过期，清除本地认证信息并跳转登录页
-          localStorage.removeItem('weavemirror_token')
-          localStorage.removeItem('weavemirror_user')
+          clearAuthSession()
           window.location.href = '/login'
           return Promise.reject(new Error('登录已过期，请重新登录'))
         case 403:

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onErrorCaptured, onMounted } from 'vue'
+import { computed, onBeforeUnmount, onErrorCaptured, onMounted } from 'vue'
 import {
   NConfigProvider,
   NGlobalStyle,
@@ -10,10 +10,21 @@ import {
   zhCN,
   dateZhCN
 } from 'naive-ui'
-import { useAppStore } from './stores/app'
+import { useAppStore } from './stores'
 import MessageApiSetter from './components/common/MessageApiSetter.vue'
 
 const appStore = useAppStore()
+let colorSchemeMediaQuery: MediaQueryList | null = null
+
+function handleColorSchemeChange() {
+  if (appStore.themeMode === 'auto') {
+    /**
+     * 主题模式依然保持为 auto，但显式重新写回一次 store，
+     * 可以让依赖主题模式的计算属性和持久化逻辑走统一入口，避免监听器里出现分叉逻辑。
+     */
+    appStore.setThemeMode('auto')
+  }
+}
 
 const isDark = computed(() => {
   if (appStore.themeMode === 'auto') {
@@ -26,12 +37,13 @@ const theme = computed(() => (isDark.value ? darkTheme : null))
 
 onMounted(() => {
   if (window.matchMedia) {
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if (appStore.themeMode === 'auto') {
-        appStore.setThemeMode('auto')
-      }
-    })
+    colorSchemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+    colorSchemeMediaQuery.addEventListener('change', handleColorSchemeChange)
   }
+})
+
+onBeforeUnmount(() => {
+  colorSchemeMediaQuery?.removeEventListener('change', handleColorSchemeChange)
 })
 
 onErrorCaptured((err, _instance, info) => {

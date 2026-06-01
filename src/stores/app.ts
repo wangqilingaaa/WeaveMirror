@@ -2,17 +2,18 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import type { UserInfo, ThemeMode, LoginParams, RegisterParams } from '@/types'
 import { loginApi, registerApi } from '@/api'
-
-/** 本地存储键名 */
-const STORAGE_KEYS = {
-  TOKEN: 'weavemirror_token',
-  USER: 'weavemirror_user',
-  THEME: 'weavemirror_theme'
-} as const
+import {
+  clearAuthSession,
+  getStoredThemeMode,
+  getStoredToken,
+  getStoredUser,
+  saveAuthSession,
+  saveThemeMode
+} from '@/utils/authStorage'
 
 export const useAppStore = defineStore('app', () => {
   // ==================== 主题状态 ====================
-  const themeMode = ref<ThemeMode>((localStorage.getItem(STORAGE_KEYS.THEME) as ThemeMode) || 'dark')
+  const themeMode = ref<ThemeMode>(getStoredThemeMode('dark'))
 
   /** 是否为深色主题 */
   const isDark = computed(() => {
@@ -24,7 +25,7 @@ export const useAppStore = defineStore('app', () => {
 
   function setThemeMode(mode: ThemeMode) {
     themeMode.value = mode
-    localStorage.setItem(STORAGE_KEYS.THEME, mode)
+    saveThemeMode(mode)
   }
 
   // ==================== 加载状态 ====================
@@ -42,18 +43,8 @@ export const useAppStore = defineStore('app', () => {
   }
 
   // ==================== 用户认证状态 ====================
-  const token = ref<string | null>(localStorage.getItem(STORAGE_KEYS.TOKEN))
-  const currentUser = ref<UserInfo | null>(_loadStoredUser())
-
-  /** 从本地存储加载用户信息 */
-  function _loadStoredUser(): UserInfo | null {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.USER)
-      return stored ? JSON.parse(stored) : null
-    } catch {
-      return null
-    }
-  }
+  const token = ref<string | null>(getStoredToken())
+  const currentUser = ref<UserInfo | null>(getStoredUser())
 
   /** 是否已登录 */
   const isLoggedIn = computed(() => !!token.value && !!currentUser.value)
@@ -94,16 +85,14 @@ export const useAppStore = defineStore('app', () => {
   function logout() {
     token.value = null
     currentUser.value = null
-    localStorage.removeItem(STORAGE_KEYS.TOKEN)
-    localStorage.removeItem(STORAGE_KEYS.USER)
+    clearAuthSession()
   }
 
   /** 保存认证信息到本地 */
   function _saveAuth(newToken: string, user: UserInfo) {
     token.value = newToken
     currentUser.value = user
-    localStorage.setItem(STORAGE_KEYS.TOKEN, newToken)
-    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user))
+    saveAuthSession(newToken, user)
   }
 
   return {

@@ -1,6 +1,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import type { ComputedRef, Ref } from 'vue'
 import type { WSClientMessage, WSServerMessage } from '@/types'
+import { getStoredToken } from '@/utils/authStorage'
 
 export type NarrativeSocketState = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -43,7 +44,7 @@ export function useNarrativeWebSocket(options: UseNarrativeWebSocketOptions) {
   }
 
   function resolveWebSocketUrl() {
-    const token = localStorage.getItem('weavemirror_token')
+    const token = getStoredToken()
     if (!token) {
       throw new Error('缺少登录 token，无法建立 WebSocket 连接。')
     }

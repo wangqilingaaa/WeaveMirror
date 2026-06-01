@@ -1,9 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-
-/** localStorage 键名常量（与 stores/app.ts 保持一致） */
-const STORAGE_KEYS = {
-  TOKEN: 'weavemirror_token'
-} as const
+import { getStoredToken } from '@/utils/authStorage'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -99,8 +95,11 @@ const router = createRouter({
 })
 
 router.beforeEach((to, _from, next) => {
-  // 直接读 localStorage，避免跨 Pinia store 实例的状态同步问题
-  const token = localStorage.getItem(STORAGE_KEYS.TOKEN)
+  /**
+   * 路由守卫只依赖认证边界工具，而不直接触碰 localStorage。
+   * 这样后续如果 token 改成 cookie、sessionStorage 或统一会话管理，这里不需要再做二次改造。
+   */
+  const token = getStoredToken()
   const isLoggedIn = !!token
 
   if (to.meta.requiresAuth && !isLoggedIn) {

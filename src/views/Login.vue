@@ -2,7 +2,7 @@
 import { ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { NButton, NInput, NForm, NFormItemGi, NGrid, useMessage } from 'naive-ui'
-import { useAppStore } from '@/stores/app'
+import { useAppStore } from '@/stores'
 
 const router = useRouter()
 const route = useRoute()

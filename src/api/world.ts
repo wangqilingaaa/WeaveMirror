@@ -1,4 +1,5 @@
 import client, { extractData } from './client'
+import { createCachedRequest } from './requestCache'
 import type {
   ApiResponse,
   CreateWorldReq,
@@ -16,6 +17,52 @@ import type {
   AIEnhanceSettingsReq,
   AIEnhanceSettingsResp
 } from '@/types'
+
+const cachedListWorldsRequest = createCachedRequest(
+  (params?: { page?: number; limit?: number }) => {
+    return client
+      .get<ApiResponse<{ worlds?: RawWorld[]; total: number; page: number; limit: number }>>('/api/v1/worlds', { params })
+      .then(extractData)
+      .then(normalizeWorldList)
+  },
+  {
+    getKey: (params) => `world-list:${JSON.stringify(params ?? {})}`,
+    ttlMs: 5000
+  }
+)
+
+const cachedGetWorldRequest = createCachedRequest(
+  (worldId: number) => {
+    return client
+      .get<ApiResponse<RawWorld>>(`/api/v1/worlds/${worldId}`)
+      .then(extractData)
+      .then(normalizeWorld)
+  },
+  {
+    getKey: (worldId) => `world-detail:${worldId}`,
+    ttlMs: 5000
+  }
+)
+
+const cachedGetBranchTreeRequest = createCachedRequest(
+  (worldId: number) => {
+    return client.get<ApiResponse<BranchTreeData>>(`/api/v1/worlds/${worldId}/timelines`).then(extractData)
+  },
+  {
+    getKey: (worldId) => `world-branch-tree:${worldId}`,
+    ttlMs: 5000
+  }
+)
+
+const cachedGetYearbookRequest = createCachedRequest(
+  (worldId: number) => {
+    return client.get<ApiResponse<YearbookData>>(`/api/v1/worlds/${worldId}/yearbook`).then(extractData)
+  },
+  {
+    getKey: (worldId) => `world-yearbook:${worldId}`,
+    ttlMs: 5000
+  }
+)
 
 // ==================== 世界观 CRUD ====================
 
@@ -146,6 +193,19 @@ function buildWorldPayload(params: CreateWorldReq | UpdateWorldReq): Record<stri
   }
 }
 
+function invalidateWorldCache(worldId?: number) {
+  cachedListWorldsRequest.invalidate()
+  if (typeof worldId === 'number' && worldId > 0) {
+    cachedGetWorldRequest.invalidate((key) => key === `world-detail:${worldId}`)
+    cachedGetBranchTreeRequest.invalidate((key) => key === `world-branch-tree:${worldId}`)
+    cachedGetYearbookRequest.invalidate((key) => key === `world-yearbook:${worldId}`)
+    return
+  }
+  cachedGetWorldRequest.invalidate()
+  cachedGetBranchTreeRequest.invalidate()
+  cachedGetYearbookRequest.invalidate()
+}
+
 /**
  * 创建世界观
  * POST /api/v1/worlds
@@ -154,7 +214,11 @@ export function createWorldApi(params: CreateWorldReq): Promise<World> {
   return client
     .post<ApiResponse<{ world: RawWorld }>>('/api/v1/worlds', buildWorldPayload(params))
     .then(extractData)
-    .then((data) => normalizeWorld(data.world))
+    .then((data) => {
+      const normalizedWorld = normalizeWorld(data.world)
+      invalidateWorldCache(normalizedWorld.id)
+      return normalizedWorld
+    })
 }
 
 /**
@@ -162,10 +226,7 @@ export function createWorldApi(params: CreateWorldReq): Promise<World> {
  * GET /api/v1/worlds
  */
 export function listWorldsApi(params?: { page?: number; limit?: number }): Promise<WorldListData> {
-  return client
-    .get<ApiResponse<{ worlds?: RawWorld[]; total: number; page: number; limit: number }>>('/api/v1/worlds', { params })
-    .then(extractData)
-    .then(normalizeWorldList)
+  return cachedListWorldsRequest(params)
 }
 
 /**
@@ -173,10 +234,7 @@ export function listWorldsApi(params?: { page?: number; limit?: number }): Promi
  * GET /api/v1/worlds/{world_id}
  */
 export function getWorldApi(worldId: number): Promise<World> {
-  return client
-    .get<ApiResponse<RawWorld>>(`/api/v1/worlds/${worldId}`)
-    .then(extractData)
-    .then(normalizeWorld)
+  return cachedGetWorldRequest(worldId)
 }
 
 /**
@@ -187,7 +245,11 @@ export function updateWorldApi(worldId: number, params: UpdateWorldReq): Promise
   return client
     .put<ApiResponse<RawWorld>>(`/api/v1/worlds/${worldId}`, buildWorldPayload(params))
     .then(extractData)
-    .then(normalizeWorld)
+    .then((data) => {
+      const normalizedWorld = normalizeWorld(data)
+      invalidateWorldCache(worldId)
+      return normalizedWorld
+    })
 }
 
 // ==================== 时间推进 ====================
@@ -197,7 +259,10 @@ export function updateWorldApi(worldId: number, params: UpdateWorldReq): Promise
  * POST /api/v1/worlds/{world_id}/time/advance
  */
 export function advanceTimeApi(worldId: number, params: AdvanceTimeReq): Promise<WorldTimeUpdate> {
-  return client.post<ApiResponse<WorldTimeUpdate>>(`/api/v1/worlds/${worldId}/time/advance`, params).then(extractData)
+  return client.post<ApiResponse<WorldTimeUpdate>>(`/api/v1/worlds/${worldId}/time/advance`, params).then(extractData).then((data) => {
+    invalidateWorldCache(worldId)
+    return data
+  })
 }
 
 // ==================== 世界线分支 ====================
@@ -207,7 +272,10 @@ export function advanceTimeApi(worldId: number, params: AdvanceTimeReq): Promise
  * POST /api/v1/worlds/{world_id}/timeline/branch
  */
 export function createBranchApi(worldId: number, params: CreateBranchReq): Promise<StoryBranch> {
-  return client.post<ApiResponse<StoryBranch>>(`/api/v1/worlds/${worldId}/timeline/branch`, params).then(extractData)
+  return client.post<ApiResponse<StoryBranch>>(`/api/v1/worlds/${worldId}/timeline/branch`, params).then(extractData).then((data) => {
+    invalidateWorldCache(worldId)
+    return data
+  })
 }
 
 /**
@@ -215,7 +283,7 @@ export function createBranchApi(worldId: number, params: CreateBranchReq): Promi
  * GET /api/v1/worlds/{world_id}/timelines
  */
 export function getBranchTreeApi(worldId: number): Promise<BranchTreeData> {
-  return client.get<ApiResponse<BranchTreeData>>(`/api/v1/worlds/${worldId}/timelines`).then(extractData)
+  return cachedGetBranchTreeRequest(worldId)
 }
 
 /**
@@ -223,7 +291,10 @@ export function getBranchTreeApi(worldId: number): Promise<BranchTreeData> {
  * PUT /api/v1/worlds/{world_id}/active-timeline
  */
 export function switchActiveTimelineApi(worldId: number, params: SwitchBranchReq): Promise<null> {
-  return client.put<ApiResponse<null>>(`/api/v1/worlds/${worldId}/active-timeline`, params).then(extractData)
+  return client.put<ApiResponse<null>>(`/api/v1/worlds/${worldId}/active-timeline`, params).then(extractData).then((data) => {
+    invalidateWorldCache(worldId)
+    return data
+  })
 }
 
 // ==================== 年鉴事件 ====================
@@ -233,7 +304,7 @@ export function switchActiveTimelineApi(worldId: number, params: SwitchBranchReq
  * GET /api/v1/worlds/{world_id}/yearbook
  */
 export function getYearbookApi(worldId: number): Promise<YearbookData> {
-  return client.get<ApiResponse<YearbookData>>(`/api/v1/worlds/${worldId}/yearbook`).then(extractData)
+  return cachedGetYearbookRequest(worldId)
 }
 
 // ==================== AI 增强 ====================

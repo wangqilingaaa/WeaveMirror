@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { toRef, watch } from 'vue'
 import {
   NButton,
   NDivider,
@@ -13,20 +13,14 @@ import {
   NSwitch
 } from 'naive-ui'
 import { AddOutline, RemoveOutline } from '@vicons/ionicons5'
-import type {
-  Character,
-  CharacterInput
-} from '@/types'
+import type { Character } from '@/types'
 import {
-  buildCharacterPayload,
   CHARACTER_STATE_OPTIONS,
-  createDefaultFormData,
-  formatJson,
   LIFE_STAGE_OPTIONS,
   NSFW_LEVEL_OPTIONS,
-  type CharacterFormData,
   VIRILITY_OPTIONS
 } from './characterForm'
+import { useCharacterFormState } from './useCharacterFormState'
 
 const props = defineProps<{
   worldId: number
@@ -39,20 +33,27 @@ const emit = defineEmits<{
 }>()
 
 /**
- * 角色表单页继续复用原有字段结构。
- * 这样可以确保页面模式与旧弹窗模式在请求体生成逻辑上完全一致，避免重构后接口字段漂移。
+ * 这里改为复用共享的表单状态组合式函数。
+ * 原因是页面版与弹窗版表单本质上操作的是同一份角色模型，如果继续各自维护一套脚本逻辑，
+ * 后续新增字段时极易出现“一处能保存、一处不能回填”的漂移问题。
  */
-const formData = reactive<CharacterFormData>(createDefaultFormData(props.worldId))
-const metadataJson = ref('')
-const bodyBuildAdditionalJson = ref('')
-const baseAttributesExtraJson = ref('')
-
-function resetForm(source?: Character | null) {
-  Object.assign(formData, createDefaultFormData(props.worldId, source ?? undefined))
-  metadataJson.value = formatJson(source?.metadata)
-  bodyBuildAdditionalJson.value = formatJson(source?.body_build?.additional)
-  baseAttributesExtraJson.value = formatJson(source?.base_attributes?.extra)
-}
+const {
+  formData,
+  metadataJson,
+  bodyBuildAdditionalJson,
+  baseAttributesExtraJson,
+  changeWatchSources,
+  resetForm,
+  addStringItem,
+  removeStringItem,
+  addDistinguishingMark,
+  removeDistinguishingMark,
+  addSkill,
+  removeSkill,
+  buildPayload,
+  getDraftSnapshot,
+  applyGeneratedCharacter
+} = useCharacterFormState(toRef(props, 'worldId'))
 
 watch(
   () => [props.character, props.worldId] as const,
@@ -67,80 +68,12 @@ watch(
  * 这里统一监听内部字段和 JSON 辅助输入框，避免父组件逐项感知几十个字段。
  */
 watch(
-  [formData, metadataJson, bodyBuildAdditionalJson, baseAttributesExtraJson],
+  changeWatchSources,
   () => {
     emit('change')
   },
   { deep: true }
 )
-
-function addStringItem(list: string[]) {
-  list.push('')
-}
-
-function removeStringItem(list: string[], index: number) {
-  list.splice(index, 1)
-}
-
-function addDistinguishingMark() {
-  formData.distinguishing_marks.push({
-    type: '',
-    location: '',
-    description: '',
-    size: '',
-    visibility: ''
-  })
-}
-
-function removeDistinguishingMark(index: number) {
-  formData.distinguishing_marks.splice(index, 1)
-}
-
-function addSkill() {
-  formData.skills.push({
-    name: '',
-    level: null,
-    category: '',
-    description: ''
-  })
-}
-
-function removeSkill(index: number) {
-  formData.skills.splice(index, 1)
-}
-
-/**
- * 页面保存和 AI 生成都依赖同一份 payload 构造逻辑。
- * 继续复用旧实现，可以确保接口字段、清洗规则和 JSON 解析行为保持一致。
- */
-function buildPayload(): CharacterInput {
-  return buildCharacterPayload(formData, {
-    worldId: props.worldId,
-    metadataJson: metadataJson.value,
-    bodyBuildAdditionalJson: bodyBuildAdditionalJson.value,
-    baseAttributesExtraJson: baseAttributesExtraJson.value
-  })
-}
-
-function getDraftSnapshot(): string {
-  return JSON.stringify({
-    formData,
-    metadataJson: metadataJson.value,
-    bodyBuildAdditionalJson: bodyBuildAdditionalJson.value,
-    baseAttributesExtraJson: baseAttributesExtraJson.value
-  })
-}
-
-function applyGeneratedCharacter(payload?: CharacterInput | null) {
-  if (!payload) {
-    throw new Error('AI 返回的角色数据为空，无法回填到表单')
-  }
-
-  Object.assign(formData, createDefaultFormData(props.worldId, payload as Character))
-  metadataJson.value = formatJson(payload.metadata)
-  bodyBuildAdditionalJson.value = formatJson(payload.body_build?.additional)
-  baseAttributesExtraJson.value = formatJson(payload.base_attributes?.extra)
-}
 
 defineExpose({
   buildPayload,

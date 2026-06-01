@@ -3,15 +3,24 @@ import { computed, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { useRoute, useRouter } from 'vue-router'
 import { NButton, NSpin, useMessage } from 'naive-ui'
-import { createChatSessionApi, getWorldApi, listCharactersApi, listChatSessionMessagesApi, listChatSessionsApi } from '@/api'
+import {
+  createChatSessionApi,
+  getWorldApi,
+  invalidateChatSessionCache,
+  listCharactersApi,
+  listChatSessionMessagesApi,
+  listChatSessionsApi
+} from '@/api'
+import { useNarrativeWebSocket } from '@/composables'
 import type { Character, ChatMessage, ChatSession, World } from '@/types'
-import NarrativeChatPanel from '@/components/narrative/NarrativeChatPanel.vue'
-import NarrativeCharacterSidebar from '@/components/narrative/NarrativeCharacterSidebar.vue'
-import NarrativeSessionSidebar from '@/components/narrative/NarrativeSessionSidebar.vue'
-import NarrativeWorldSidebar from '@/components/narrative/NarrativeWorldSidebar.vue'
-import type { StageCharacterCard, StageChatMessage, StageSessionCard, StageWorldSection } from '@/components/narrative/stageTypes'
-import { useNarrativeWebSocket } from '@/composables/useNarrativeWebSocket'
-import { mapNarrativeSocketMessage } from '@/components/narrative/narrativeSocketMessageMapper'
+import {
+  mapNarrativeSocketMessage,
+  NarrativeCharacterSidebar,
+  NarrativeChatPanel,
+  NarrativeSessionSidebar,
+  NarrativeWorldSidebar
+} from '@/components/narrative'
+import type { StageCharacterCard, StageChatMessage, StageSessionCard, StageWorldSection } from '@/components/narrative'
 
 interface StageWorldSnapshot {
   name: string
@@ -521,6 +530,7 @@ function handleSocketUiAction(payload: Parameters<typeof mapNarrativeSocketMessa
     }
     pendingStreamMessageId.value = null
     sending.value = false
+    invalidateChatSessionCache(activeSessionId.value ?? payload.session_id)
     void loadChatSessions()
     return
   }
@@ -556,6 +566,7 @@ function handleSocketUiAction(payload: Parameters<typeof mapNarrativeSocketMessa
     if (action.finishStreaming) {
       pendingStreamMessageId.value = null
       sending.value = false
+      invalidateChatSessionCache(activeSessionId.value ?? payload.session_id)
       void loadChatSessions()
     }
     return

@@ -1,4 +1,5 @@
 import client, { extractData } from './client'
+import { createCachedRequest } from './requestCache'
 import type {
   ApiResponse,
   CreateCharacterReq,
@@ -11,6 +12,27 @@ import type {
   AIGenerateCharacterResp
 } from '@/types'
 
+const cachedListCharactersRequest = createCachedRequest(
+  (params: { world_id: number; page?: number; limit?: number }) => {
+    const { world_id, ...query } = params
+    return client.get<ApiResponse<CharacterListData>>(buildCharacterUrl(world_id), { params: query }).then(extractData)
+  },
+  {
+    getKey: (params) => `character-list:${params.world_id}:${JSON.stringify({ page: params.page, limit: params.limit })}`,
+    ttlMs: 5000
+  }
+)
+
+const cachedGetCharacterRequest = createCachedRequest(
+  (worldId: number, characterId: number) => {
+    return client.get<ApiResponse<Character>>(buildCharacterUrl(worldId, `/${characterId}`)).then(extractData)
+  },
+  {
+    getKey: (worldId, characterId) => `character-detail:${worldId}:${characterId}`,
+    ttlMs: 5000
+  }
+)
+
 // ==================== 角色 CRUD ====================
 
 /**
@@ -21,12 +43,35 @@ function buildCharacterUrl(worldId: number, suffix = ''): string {
   return `/api/v1/worlds/${worldId}/characters${suffix}`
 }
 
+function invalidateCharacterCache(worldId?: number, characterId?: number) {
+  if (typeof worldId === 'number' && worldId > 0) {
+    cachedListCharactersRequest.invalidate((key) => key.startsWith(`character-list:${worldId}:`))
+  } else {
+    cachedListCharactersRequest.invalidate()
+  }
+
+  if (typeof worldId === 'number' && worldId > 0 && typeof characterId === 'number' && characterId > 0) {
+    cachedGetCharacterRequest.invalidate((key) => key === `character-detail:${worldId}:${characterId}`)
+    return
+  }
+
+  if (typeof worldId === 'number' && worldId > 0) {
+    cachedGetCharacterRequest.invalidate((key) => key.startsWith(`character-detail:${worldId}:`))
+    return
+  }
+
+  cachedGetCharacterRequest.invalidate()
+}
+
 /**
  * 创建角色
  * POST /api/v1/worlds/:world_id/characters
  */
 export function createCharacterApi(worldId: number, params: CreateCharacterReq): Promise<Character> {
-  return client.post<ApiResponse<Character>>(buildCharacterUrl(worldId), params).then(extractData)
+  return client.post<ApiResponse<Character>>(buildCharacterUrl(worldId), params).then(extractData).then((data) => {
+    invalidateCharacterCache(worldId)
+    return data
+  })
 }
 
 /**
@@ -34,8 +79,7 @@ export function createCharacterApi(worldId: number, params: CreateCharacterReq):
  * GET /api/v1/worlds/:world_id/characters
  */
 export function listCharactersApi(params: { world_id: number; page?: number; limit?: number }): Promise<CharacterListData> {
-  const { world_id, ...query } = params
-  return client.get<ApiResponse<CharacterListData>>(buildCharacterUrl(world_id), { params: query }).then(extractData)
+  return cachedListCharactersRequest(params)
 }
 
 /**
@@ -43,7 +87,7 @@ export function listCharactersApi(params: { world_id: number; page?: number; lim
  * GET /api/v1/worlds/:world_id/characters/{character_id}
  */
 export function getCharacterApi(worldId: number, characterId: number): Promise<Character> {
-  return client.get<ApiResponse<Character>>(buildCharacterUrl(worldId, `/${characterId}`)).then(extractData)
+  return cachedGetCharacterRequest(worldId, characterId)
 }
 
 /**
@@ -51,7 +95,10 @@ export function getCharacterApi(worldId: number, characterId: number): Promise<C
  * PUT /api/v1/worlds/:world_id/characters/{character_id}
  */
 export function updateCharacterApi(worldId: number, characterId: number, params: UpdateCharacterReq): Promise<Character> {
-  return client.put<ApiResponse<Character>>(buildCharacterUrl(worldId, `/${characterId}`), params).then(extractData)
+  return client.put<ApiResponse<Character>>(buildCharacterUrl(worldId, `/${characterId}`), params).then(extractData).then((data) => {
+    invalidateCharacterCache(worldId, characterId)
+    return data
+  })
 }
 
 /**
@@ -59,7 +106,10 @@ export function updateCharacterApi(worldId: number, characterId: number, params:
  * DELETE /api/v1/worlds/:world_id/characters/{character_id}
  */
 export function deleteCharacterApi(worldId: number, characterId: number): Promise<DeleteResp> {
-  return client.delete<ApiResponse<DeleteResp>>(buildCharacterUrl(worldId, `/${characterId}`)).then(extractData)
+  return client.delete<ApiResponse<DeleteResp>>(buildCharacterUrl(worldId, `/${characterId}`)).then(extractData).then((data) => {
+    invalidateCharacterCache(worldId, characterId)
+    return data
+  })
 }
 
 // ==================== 角色状态 ====================
@@ -69,7 +119,13 @@ export function deleteCharacterApi(worldId: number, characterId: number): Promis
  * PUT /api/v1/worlds/:world_id/characters/{character_id}/state
  */
 export function changeCharacterStateApi(worldId: number, characterId: number, params: ChangeStateReq): Promise<Character> {
-  return client.put<ApiResponse<Character>>(buildCharacterUrl(worldId, `/${characterId}/state`), params).then(extractData)
+  return client
+    .put<ApiResponse<Character>>(buildCharacterUrl(worldId, `/${characterId}/state`), params)
+    .then(extractData)
+    .then((data) => {
+      invalidateCharacterCache(worldId, characterId)
+      return data
+    })
 }
 
 

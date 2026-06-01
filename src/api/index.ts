@@ -61,5 +61,6 @@ export {
 export {
   createChatSessionApi,
   listChatSessionsApi,
-  listChatSessionMessagesApi
+  listChatSessionMessagesApi,
+  invalidateChatSessionCache
 } from './chat'
